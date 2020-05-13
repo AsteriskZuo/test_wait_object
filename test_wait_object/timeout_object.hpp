@@ -264,8 +264,8 @@ public:
     struct timeout_object_t
     {
         int id;
-        explicit timeout_object_t() noexcept;
-        explicit timeout_object_t(const int ms) noexcept;
+        explicit timeout_object_t(const std::string name) noexcept;
+        explicit timeout_object_t(const std::string name, const int ms) noexcept;
         ~timeout_object_t();
         timeout_object_t(const timeout_object_t &) = delete;
         timeout_object_t &operator=(const timeout_object_t &) = delete;
@@ -279,6 +279,7 @@ public:
         time_point_t end_point;
         std::string obj_name;
         ms_t _threshold;
+        bool _enable_log;
     };
 
 private:
@@ -286,6 +287,7 @@ private:
 
     std::thread *_t;
     std::atomic_bool _quit;
+    std::atomic_bool _is_init;
     std::mutex _mutex;
     // std::list<timeout_object_t *> _ls;
     // std::list<std::unique_ptr<timeout_object_t>> _ls;
@@ -304,8 +306,8 @@ public:
     void start();
     void stop();
 
-    void add_object(timeout_object_t* obj, const std::string obj_name);
-    void add_object(timeout_object_t* obj, const std::string obj_name, const int ms);
+    void add_object(timeout_object_t* obj, const std::string &obj_name);
+    void add_object(timeout_object_t* obj, const std::string &obj_name, const int ms);
     void delete_object(const int id);
     void check_timeout();
 };

@@ -649,15 +649,22 @@ void test_timeout_object::_start_wait(const int ms)
 
 static std::atomic_int _timeout_object_t_id = {0};
 
-object_timeout_observer::timeout_object_t::timeout_object_t() noexcept
+object_timeout_observer::timeout_object_t::timeout_object_t(const std::string name) noexcept
+    : timeout_object_t(std::move(name), 0)
 {
-    timeout_object_t(0);
+    /* 1.error */
+    //    timeout_object_t(std::move(name), 0);
+
+    /* 2.repetition */
+    //    if (0xff <= (id = _timeout_object_t_id.fetch_sub(1)))
+    //        id = _timeout_object_t_id.exchange(0);
+    //    object_timeout_observer::instance()->add_object(std::addressof(*this), name, 0);
 }
-object_timeout_observer::timeout_object_t::timeout_object_t(const int ms) noexcept
+object_timeout_observer::timeout_object_t::timeout_object_t(const std::string name, const int ms) noexcept
 {
     if (0xff <= (id = _timeout_object_t_id.fetch_sub(1)))
         id = _timeout_object_t_id.exchange(0);
-    object_timeout_observer::instance()->add_object(std::addressof(*this), __FUNCTION__, ms);
+    object_timeout_observer::instance()->add_object(std::addressof(*this), name, ms);
 }
 object_timeout_observer::timeout_object_t::~timeout_object_t()
 {
@@ -672,7 +679,7 @@ object_timeout_observer *object_timeout_observer::instance()
 }
 
 object_timeout_observer::object_timeout_observer()
-    : _quit(false), _threshold(std::chrono::milliseconds(20))
+    : _quit(false), _is_init(false), _threshold(std::chrono::milliseconds(20))
 {
 }
 
@@ -683,8 +690,9 @@ object_timeout_observer::~object_timeout_observer()
 void object_timeout_observer::start()
 {
     std::lock_guard<std::mutex> lock(_mutex);
-    if (!_quit.exchange(true))
+    if (!_is_init.exchange(true))
     {
+        _quit.store(false);
         if (!_t)
         {
             _t = new std::thread(&object_timeout_observer::run);
@@ -694,8 +702,9 @@ void object_timeout_observer::start()
 void object_timeout_observer::stop()
 {
     std::lock_guard<std::mutex> lock(_mutex);
-    if (_quit.exchange(false))
+    if (_is_init.exchange(false))
     {
+        _quit.store(true);
         if (_t)
         {
             if (_t->joinable())
@@ -708,22 +717,25 @@ void object_timeout_observer::stop()
     }
 }
 
-void object_timeout_observer::add_object(timeout_object_t *obj, const std::string obj_name)
+void object_timeout_observer::add_object(timeout_object_t *obj, const std::string &obj_name)
 {
     add_object(obj, obj_name, 0);
 }
-void object_timeout_observer::add_object(timeout_object_t *obj, const std::string obj_name, const int ms)
+void object_timeout_observer::add_object(timeout_object_t *obj, const std::string &obj_name, const int ms)
 {
+    std::lock_guard<std::mutex> lock(_mutex);
     std::shared_ptr<timeout_object_info_t> obj_info_ptr = std::make_shared<timeout_object_info_t>();
     obj_info_ptr->obj = obj;
     obj_info_ptr->start_point = std::chrono::system_clock::now();
     obj_info_ptr->end_point = std::chrono::time_point<std::chrono::system_clock>();
     obj_info_ptr->obj_name = std::move(obj_name);
     obj_info_ptr->_threshold = std::chrono::milliseconds(ms);
+    obj_info_ptr->_enable_log = true;
     _ls.insert(std::make_pair(obj->id, obj_info_ptr));
 }
 void object_timeout_observer::delete_object(const int id)
 {
+    std::lock_guard<std::mutex> lock(_mutex);
     auto iter = _ls.find(id);
     if (iter != _ls.end())
     {
@@ -735,34 +747,39 @@ void object_timeout_observer::delete_object(const int id)
             //超时
             std::cout << __FUNCTION__ << ":" << __LINE__
                       << ":name=" << obj_info_ptr->obj_name.c_str()
+                      << ":threshold=" << std::chrono::duration_cast<std::chrono::milliseconds>(obj_info_ptr->_threshold.count() ? obj_info_ptr->_threshold : _threshold).count()
                       << ":ms=" << std::chrono::duration_cast<std::chrono::milliseconds>(ret).count() << std::endl;
         }
         else
         {
             //在规定时间
+            std::cout << __FUNCTION__ << ":" << __LINE__
+                      << ":name=" << obj_info_ptr->obj_name.c_str() << std::endl;
         }
         _ls.erase(iter);
     }
 }
 void object_timeout_observer::check_timeout()
 {
+    std::lock_guard<std::mutex> lock(_mutex);
     auto end_point = std::chrono::system_clock::now();
-    for (auto iter = _ls.begin(); iter != _ls.end();)
+    for (auto iter = _ls.begin(); iter != _ls.end(); ++iter)
     {
         const std::shared_ptr<timeout_object_info_t> &obj_info_ptr = iter->second;
         auto ret = end_point - obj_info_ptr->start_point;
-        if (ret >= (obj_info_ptr->_threshold.count() ? obj_info_ptr->_threshold : _threshold))
+        if (obj_info_ptr->_enable_log && ret >= (obj_info_ptr->_threshold.count() ? obj_info_ptr->_threshold : _threshold))
         {
             //超时
             std::cout << __FUNCTION__ << ":" << __LINE__
                       << ":name=" << obj_info_ptr->obj_name.c_str()
+                      << ":threshold=" << std::chrono::duration_cast<std::chrono::milliseconds>(obj_info_ptr->_threshold.count() ? obj_info_ptr->_threshold : _threshold).count()
                       << ":ms=" << std::chrono::duration_cast<std::chrono::milliseconds>(ret).count() << std::endl;
-            iter = _ls.erase(iter);
+            obj_info_ptr->_enable_log = false; //检测超时只打印一次，但是对于删除无效
         }
         else
         {
             //在规定时间
-            ++iter;
+            //            std::cout << __FUNCTION__ << ":" << __LINE__ << std::endl;
         }
     }
 }
@@ -774,14 +791,15 @@ void object_timeout_observer::run()
     {
         if (obj->_quit)
             break;
+        //        std::cout << __FUNCTION__ << ":" << __LINE__ << ":size=" << obj->_ls.size() << std::endl;
         if (0 != obj->_ls.size())
             obj->check_timeout();
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
 
-#define TIMEOUT_CHECK_OBJECT object_timeout_observer::timeout_object_t();
-#define TIMEOUT_CHECK_OBJECT_PARAM(x) object_timeout_observer::timeout_object_t(x);
+#define TIMEOUT_CHECK_OBJECT object_timeout_observer::timeout_object_t d46319f193e6461b89178020841fd685(__FUNCTION__);
+#define TIMEOUT_CHECK_OBJECT_PARAM(x) object_timeout_observer::timeout_object_t e8e6ca0ea2da478393e95f26cbd2b14d(__FUNCTION__, x);
 
 ///////////////////////////////////////////////////////////////////////////////
 ////  test partition                                                       ////
@@ -1291,26 +1309,39 @@ static void test12()
 
 struct object_timeout_observer_obj
 {
-    object_timeout_observer_obj(){
-
+    object_timeout_observer_obj()
+    {
     }
-    ~object_timeout_observer_obj(){
-
+    ~object_timeout_observer_obj()
+    {
     }
-    static void work1(){
+    static void work1()
+    {
         TIMEOUT_CHECK_OBJECT;
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
-    static void work2(){
+    static void work2()
+    {
         TIMEOUT_CHECK_OBJECT_PARAM(500);
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
+    static void work3()
+    {
+        TIMEOUT_CHECK_OBJECT;
+    }
+    static void work4()
+    {
+        TIMEOUT_CHECK_OBJECT_PARAM(500);
     }
 };
 static void object_timeout_observer_1()
 {
     object_timeout_observer::instance()->start();
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     object_timeout_observer_obj::work1();
     object_timeout_observer_obj::work2();
+    object_timeout_observer_obj::work3();
+    object_timeout_observer_obj::work4();
 }
 static void test13()
 {
