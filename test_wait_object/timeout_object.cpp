@@ -28,9 +28,10 @@ static void test10();
 static void test11();
 static void test12();
 static void test13();
+static void test14();
 void test_timeout_object_function()
 {
-    test13();
+    test14();
 }
 
 timeout_object timeout_object::_s_obj;
@@ -810,7 +811,7 @@ void object_timeout_observer::run()
  */
 static const char *test_current_time()
 {
-    if (true)
+    if (false)
     {
         static char now_buffer[9] = {0};
         std::time_t now_time = std::time(NULL);
@@ -819,6 +820,26 @@ static const char *test_current_time()
         std::strftime(now_buffer, 8, "%H:%M:%S", now_tm);
         return now_buffer;
     }
+
+    if (true)
+    {
+        //hh:mm:ss.zzz
+        static char now_buffer[1024] = {0};
+        std::memset(now_buffer, 0, 1024);
+        std::chrono::time_point<std::chrono::system_clock> tp = std::chrono::system_clock::now();
+        std::chrono::system_clock::duration dur = tp.time_since_epoch();
+        auto ds = std::chrono::duration_cast<std::chrono::duration<long, std::ratio<3600*24> >>(dur);
+        auto hs = std::chrono::duration_cast<std::chrono::duration<long, std::ratio<3600> >>(dur - ds);
+        auto hs_tmp = std::chrono::duration_cast<std::chrono::duration<long, std::ratio<3600> >>(dur);
+        auto ms = std::chrono::duration_cast<std::chrono::duration<long, std::ratio<60> >>(dur - hs_tmp);
+        auto ms_tmp = std::chrono::duration_cast<std::chrono::duration<long, std::ratio<60> >>(dur);
+        auto ss = std::chrono::duration_cast<std::chrono::duration<long long, std::ratio<1> >>(dur- ms_tmp);
+        auto ss_tmp = std::chrono::duration_cast<std::chrono::duration<long long, std::ratio<1> >>(dur);
+        auto mills = std::chrono::duration_cast<std::chrono::duration<long long, std::ratio<1, 1000> >>(dur - ss_tmp);
+        std::sprintf(now_buffer, "%ld:%ld:%lld.%lld", hs.count(), ms.count(), ss.count(), mills.count());
+        return now_buffer;
+    }
+    
 
     //    std::chrono::time_point<std::chrono::system_clock> now_time_point = std::chrono::system_clock::now();
     //    std::time_t now_time = std::chrono::system_clock::to_time_t(now_time_point);
@@ -1349,4 +1370,9 @@ static void test13()
     t.detach();
     std::this_thread::sleep_for(std::chrono::milliseconds(10000));
     object_timeout_observer::instance()->stop();
+}
+
+static void test14()
+{
+    std::cout << test_current_time() << std::endl;
 }
