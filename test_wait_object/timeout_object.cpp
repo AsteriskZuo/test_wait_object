@@ -29,9 +29,13 @@ static void test11();
 static void test12();
 static void test13();
 static void test14();
+static void test15();
+static void test16();
+static void test17();
+static void test18();
 void test_timeout_object_function()
 {
-    test14();
+    test15();
 }
 
 timeout_object timeout_object::_s_obj;
@@ -657,13 +661,13 @@ object_timeout_observer::timeout_object_t::timeout_object_t(const std::string na
     //    timeout_object_t(std::move(name), 0);
 
     /* 2.repetition */
-    //    if (0xff <= (id = _timeout_object_t_id.fetch_sub(1)))
+    //    if (0xff <= (id = _timeout_object_t_id.fetch_add(1)))
     //        id = _timeout_object_t_id.exchange(0);
     //    object_timeout_observer::instance()->add_object(std::addressof(*this), name, 0);
 }
 object_timeout_observer::timeout_object_t::timeout_object_t(const std::string name, const int ms) noexcept
 {
-    if (0xff <= (id = _timeout_object_t_id.fetch_sub(1)))
+    if (0xff <= (id = _timeout_object_t_id.fetch_add(1)))
         id = _timeout_object_t_id.exchange(0);
     object_timeout_observer::instance()->add_object(std::addressof(*this), name, ms);
 }
@@ -802,6 +806,259 @@ void object_timeout_observer::run()
 #define TIMEOUT_CHECK_OBJECT object_timeout_observer::timeout_object_t d46319f193e6461b89178020841fd685(__FUNCTION__);
 #define TIMEOUT_CHECK_OBJECT_PARAM(x) object_timeout_observer::timeout_object_t e8e6ca0ea2da478393e95f26cbd2b14d(__FUNCTION__, x);
 
+network_task_judge network_task_judge::_s_obj;
+
+network_task_judge *network_task_judge::instance()
+{
+    return &_s_obj;
+}
+
+network_task_judge::network_task_judge() noexcept
+    : _quit(false), _is_init(false)
+{
+}
+network_task_judge::~network_task_judge() noexcept
+{
+}
+
+void network_task_judge::run()
+{
+    network_task_judge *obj = network_task_judge::instance();
+    for (;;)
+    {
+        if (obj->_quit.load())
+        {
+            break;
+        }
+        task_t *task = obj->_q->front_pop();
+        if (task)
+        {
+            obj->_q->dispose(task);
+        }
+    }
+}
+
+void network_task_judge::start(const int ms, const task_notify_t &callback)
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    std::cout << __FUNCTION__ << ":" << __LINE__
+              << ":t=" << test_current_time()
+              << ":els=" << test_get_time_difference() << std::endl;
+    if (!_is_init.exchange(true))
+    {
+        _quit.store(false);
+        _threshold = std::chrono::milliseconds(ms);
+        if (!_q)
+        {
+            _q = new network_task_judge::task_queue_t(_threshold, callback);
+        }
+        if (!_t)
+        {
+            _t = new std::thread(&network_task_judge::run);
+        }
+    }
+}
+void network_task_judge::stop()
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    std::cout << __FUNCTION__ << ":" << __LINE__
+              << ":t=" << test_current_time()
+              << ":els=" << test_get_time_difference() << ":before:" << std::endl;
+    if (_is_init.exchange(false))
+    {
+        _quit.store(true);
+        if (_q)
+        {
+            _q->quit();
+        }
+        if (_t)
+        {
+            if (_t->joinable())
+            {
+                _t->join();
+            }
+            delete _t;
+            _t = nullptr;
+        }
+        if (_q)
+        {
+            delete _q; //!!!
+            _q = nullptr;
+        }
+    }
+    std::cout << __FUNCTION__ << ":" << __LINE__
+              << ":t=" << test_current_time()
+              << ":els=" << test_get_time_difference() << ":after:" << std::endl;
+}
+
+void network_task_judge::add_task(const std::string network_status, const std::string network_info)
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    //    std::cout << __FUNCTION__ << ":" << __LINE__
+    //              << ":t=" << test_current_time()
+    //              << ":els=" << test_get_time_difference() << std::endl;
+    if (_is_init.load())
+    {
+        _q->push_back(network_status, network_info);
+    }
+}
+
+network_task_judge::task_queue_t::task_queue_t(std::chrono::milliseconds &threshold, const task_notify_t &callback)
+    : _quit(false), _threshold(threshold), _cb(callback)
+{
+}
+network_task_judge::task_queue_t::~task_queue_t()
+{
+}
+void network_task_judge::task_queue_t::push_back(const std::string &network_status, const std::string &network_info)
+{
+    network_task_judge::task_t *task = new network_task_judge::task_t();
+    assert(task);
+    if (network_status.empty())
+    {
+        task->network_status = network_task_judge::task_t::no_network;
+    }
+    else
+    {
+        if (network_status.find("wifi"))
+            task->network_status = network_task_judge::task_t::network_wifi;
+        else
+            task->network_status = network_task_judge::task_t::network_mobile;
+    }
+    task->network_info = network_info;
+    push_back(task);
+}
+void network_task_judge::task_queue_t::push_back(network_task_judge::task_t *task)
+{
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+        std::cout << __FUNCTION__ << ":" << __LINE__
+                  << ":t=" << test_current_time()
+                  << ":els=" << test_get_time_difference()
+                  << ":id=" << task->id
+                  << ":status=" << task->network_status
+                  << ":tmsp=" << task->task_create_point.count() << std::endl;
+        _ls.push_back(task);
+    }
+    _variable.notify_one();
+}
+network_task_judge::task_t *network_task_judge::task_queue_t::front_pop()
+{
+    /**
+     * case 1: 没有任务，一直超时等待，等待间隔_threshold
+     * case 2: 一个周期只有一个任务: 1.等待刚开始（概率很低） 2.等待一定时间（小于一个周期）
+     * case 3: 一个周期出现多个任务: 1.
+     */
+    {
+        std::unique_lock<std::mutex> lock(_mutex);
+        _variable.wait_for(lock, _threshold, [this]() -> bool {
+            return _quit.load() || 0 != _ls.size();
+        });
+    }
+    task_t *task = nullptr;
+    {
+        std::unique_lock<std::mutex> lock(_mutex);
+        if (_ls.size() && !_quit.load())
+        {
+            task = _ls.back(); //maybe is nullptr
+            assert(task);
+            std::cout << __FUNCTION__ << ":" << __LINE__
+                      << ":t=" << test_current_time()
+                      << ":els=" << test_get_time_difference()
+                      << ":id=" << task->id
+                      << ":status=" << task->network_status
+                      << ":tmsp=" << task->task_create_point.count() << std::endl;
+            auto &&timeout_point = task->task_create_point + _threshold;
+            auto &&now_point = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+            auto &&diff = timeout_point - now_point;
+            if (0 < diff.count())
+            {
+                std::cout << __FUNCTION__ << ":" << __LINE__
+                          << ":t=" << test_current_time()
+                          << ":els=" << test_get_time_difference()
+                          << ":diff=" << diff.count() << std::endl;
+                //没有超时
+                task = nullptr;
+                while (1 < _ls.size())
+                {
+                    task_t *tmp = _ls.front();
+                    delete tmp;
+                    _ls.pop_front();
+                }
+                _variable.wait_for(lock, diff, [this]() -> bool { //避免浪费资源
+                    return _quit.load();
+                });
+            }
+            else
+            {
+                std::cout << __FUNCTION__ << ":" << __LINE__
+                          << ":t=" << test_current_time()
+                          << ":els=" << test_get_time_difference()
+                          << ":id=" << task->id
+                          << ":status=" << task->network_status
+                          << ":tmsp=" << task->task_create_point.count() << std::endl;
+                //超时
+                _ls.pop_back();
+                _clear();
+            }
+        }
+    }
+    return task;
+}
+void network_task_judge::task_queue_t::quit()
+{
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+        std::cout << __FUNCTION__ << ":" << __LINE__
+                  << ":t=" << test_current_time()
+                  << ":els=" << test_get_time_difference() << std::endl;
+        _quit.store(true);
+        _clear();
+    }
+    _variable.notify_one();
+}
+void network_task_judge::task_queue_t::_clear()
+{
+    for (auto iter = _ls.begin(); iter != _ls.end(); ++iter)
+    {
+        task_t *task = *iter;
+        if (task)
+        {
+            delete task;
+        }
+    }
+    _ls.clear();
+}
+void network_task_judge::task_queue_t::dispose(const network_task_judge::task_t *task)
+{
+    /**
+     * 用锁说明: 
+     * 1.dispose和push_back不是一个线程: 操作不冲突
+     * 2.dispose和front_pop是一个线程: 同一个线程不会同时执行
+     * 3.dispose和quit不是一个线程: 操作冲突
+     */
+    std::lock_guard<std::mutex> lock(_mutex);
+    if (!_quit.load())
+    {
+        if (_cb)
+        {
+            _cb(task);
+        }
+        if (task)
+        {
+            delete task;
+        }
+    }
+}
+
+network_task_judge::task_t::task_t() noexcept
+{
+    static std::atomic_int _s_id = {0};
+    if (0xff <= (id = _s_id.fetch_add(1)))
+        id = _s_id.exchange(0);
+    task_create_point = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 ////  test partition                                                       ////
 ///////////////////////////////////////////////////////////////////////////////
@@ -828,18 +1085,17 @@ static const char *test_current_time()
         std::memset(now_buffer, 0, 1024);
         std::chrono::time_point<std::chrono::system_clock> tp = std::chrono::system_clock::now();
         std::chrono::system_clock::duration dur = tp.time_since_epoch();
-        auto ds = std::chrono::duration_cast<std::chrono::duration<long, std::ratio<3600*24> >>(dur);
-        auto hs = std::chrono::duration_cast<std::chrono::duration<long, std::ratio<3600> >>(dur - ds);
-        auto hs_tmp = std::chrono::duration_cast<std::chrono::duration<long, std::ratio<3600> >>(dur);
-        auto ms = std::chrono::duration_cast<std::chrono::duration<long, std::ratio<60> >>(dur - hs_tmp);
-        auto ms_tmp = std::chrono::duration_cast<std::chrono::duration<long, std::ratio<60> >>(dur);
-        auto ss = std::chrono::duration_cast<std::chrono::duration<long long, std::ratio<1> >>(dur- ms_tmp);
-        auto ss_tmp = std::chrono::duration_cast<std::chrono::duration<long long, std::ratio<1> >>(dur);
-        auto mills = std::chrono::duration_cast<std::chrono::duration<long long, std::ratio<1, 1000> >>(dur - ss_tmp);
+        auto ds = std::chrono::duration_cast<std::chrono::duration<long, std::ratio<3600 * 24>>>(dur);
+        auto hs = std::chrono::duration_cast<std::chrono::duration<long, std::ratio<3600>>>(dur - ds);
+        auto hs_tmp = std::chrono::duration_cast<std::chrono::duration<long, std::ratio<3600>>>(dur);
+        auto ms = std::chrono::duration_cast<std::chrono::duration<long, std::ratio<60>>>(dur - hs_tmp);
+        auto ms_tmp = std::chrono::duration_cast<std::chrono::duration<long, std::ratio<60>>>(dur);
+        auto ss = std::chrono::duration_cast<std::chrono::duration<long long, std::ratio<1>>>(dur - ms_tmp);
+        auto ss_tmp = std::chrono::duration_cast<std::chrono::duration<long long, std::ratio<1>>>(dur);
+        auto mills = std::chrono::duration_cast<std::chrono::duration<long long, std::ratio<1, 1000>>>(dur - ss_tmp);
         std::sprintf(now_buffer, "%ld:%ld:%lld.%lld", hs.count(), ms.count(), ss.count(), mills.count());
         return now_buffer;
     }
-    
 
     //    std::chrono::time_point<std::chrono::system_clock> now_time_point = std::chrono::system_clock::now();
     //    std::time_t now_time = std::chrono::system_clock::to_time_t(now_time_point);
@@ -1375,4 +1631,105 @@ static void test13()
 static void test14()
 {
     std::cout << test_current_time() << std::endl;
+}
+
+class test_network_status
+{
+private:
+    /* data */
+public:
+    test_network_status(/* args */);
+    ~test_network_status();
+
+    static void callback(const network_task_judge::task_t *task);
+};
+
+test_network_status::test_network_status(/* args */)
+{
+}
+
+test_network_status::~test_network_status()
+{
+}
+
+void test_network_status::callback(const network_task_judge::task_t *task)
+{
+    std::cout << __FUNCTION__ << ":" << __LINE__
+              << ":t=" << test_current_time()
+              << ":els=" << test_get_time_difference()
+              << ":id=" << task->id
+              << ":status=" << task->network_status
+              << ":tmsp=" << task->task_create_point.count() << std::endl;
+}
+static int network_task_judge_factor = 1; //1000, 100, 10 //2
+static void network_task_judge_add_task()
+{
+    // std::this_thread::sleep_for(std::chrono::milliseconds(2 * network_task_judge_factor)); //1
+    network_task_judge::instance()->add_task("wifi", "");
+    std::this_thread::sleep_for(std::chrono::milliseconds(2 * network_task_judge_factor));
+    network_task_judge::instance()->add_task("4G", "yidong");
+    std::this_thread::sleep_for(std::chrono::milliseconds(3 * network_task_judge_factor));
+    network_task_judge::instance()->add_task("wifi", "");
+}
+static void test15()
+{
+    /**
+     * 测试用例: 
+     * 1.//1 语句生效 OK
+     * 2.//1 语句不生效 OK
+     * 3.//2 1000 OK
+     * 4.//2 100 OK
+     * 5.//2 10 OK
+     * 6.//2 1 不支持
+     * 7.//7 OK
+     */
+    network_task_judge_factor = 1000;
+    network_task_judge::instance()->start(4 * network_task_judge_factor, &test_network_status::callback);
+    std::thread t(network_task_judge_add_task);
+    t.detach();
+    // std::this_thread::sleep_for(std::chrono::milliseconds(15 * network_task_judge_factor));//7
+    std::this_thread::sleep_for(std::chrono::milliseconds(6 * network_task_judge_factor));//7
+    network_task_judge::instance()->stop();
+}
+int network_task_judge_count = 1000; //1000 10000 100000 //3
+static void network_task_judge_add_task4()
+{
+    // std::this_thread::sleep_for(std::chrono::milliseconds(2 * network_task_judge_factor));//4
+    for (size_t i = 0; i < network_task_judge_count; i++)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(2 * network_task_judge_factor));
+        if (i % 2)
+        {
+            network_task_judge::instance()->add_task("wifi", "");
+        }
+        else
+        {
+            network_task_judge::instance()->add_task("4G", "yidong");
+        }
+    }
+}
+static void test18()
+{
+    /**
+     * 测试用例:
+     * 1.//4 语句生效 OK
+     * 2.//4 语句不生效 OK
+     * 3.//2 1000 OK network_task_judge_factor
+     * 4.//2 100 OK
+     * 5.//2 10 OK
+     * 6.//2 1 不支持
+     * 7.//3 1000 OK network_task_judge_count
+     * 8.//3 10000 OK
+     * 9.//3 100000 OK
+     * 10.//4 OK
+     * 11.//5 OK
+     */
+    network_task_judge_factor = 10;
+    network_task_judge_count = 1000;
+    network_task_judge::instance()->start(4 * network_task_judge_factor, &test_network_status::callback);
+    std::thread t(network_task_judge_add_task4);
+    t.detach();
+    // std::this_thread::sleep_for(std::chrono::milliseconds(network_task_judge_count * 3 * network_task_judge_factor + 4 * network_task_judge_factor * 2));//4
+    std::this_thread::sleep_for(std::chrono::milliseconds(15000)); //5
+    network_task_judge::instance()->stop();
 }

@@ -254,6 +254,10 @@ private:
     void _start_wait(const int ms);
 };
 
+/**
+ * 对象超时观察者
+ * 主要任务:对现有布局对象生命周期进行检测，是否在规定时间内结束，如果超时则给出警告或者作出相应处理。
+ */
 class object_timeout_observer
 {
 public:
@@ -272,8 +276,11 @@ public:
         timeout_object_t(timeout_object_t &&) = delete;
         timeout_object_t &operator=(timeout_object_t &&) = delete;
     };
+
+private:
     struct timeout_object_info_t
     {
+        friend class object_timeout_observer;
         timeout_object_t *obj;
         time_point_t start_point;
         time_point_t end_point;
@@ -306,10 +313,83 @@ public:
     void start();
     void stop();
 
-    void add_object(timeout_object_t* obj, const std::string &obj_name);
-    void add_object(timeout_object_t* obj, const std::string &obj_name, const int ms);
+    void add_object(timeout_object_t *obj, const std::string &obj_name);
+    void add_object(timeout_object_t *obj, const std::string &obj_name, const int ms);
     void delete_object(const int id);
     void check_timeout();
+};
+
+/**
+ * 网络重复任务判断
+ * 主要应用场景:网络抖动（连接状态重复报告问题)
+ */
+class network_task_judge final
+{
+public:
+    struct task_t
+    {
+        explicit task_t() noexcept;
+        enum network_status_t
+        {
+            no_network,
+            network_wifi,
+            network_mobile
+        };
+        network_status_t network_status;
+        std::string network_info;
+        std::chrono::milliseconds task_create_point;
+        int id;
+    };
+
+    typedef void (*task_notify_t)(const task_t *task);
+
+private:
+    struct task_queue_t
+    {
+        task_queue_t(std::chrono::milliseconds &threshold, const task_notify_t &callback);
+        ~task_queue_t();
+
+        void push_back(const std::string &network_status, const std::string &network_info);
+
+        void push_back(network_task_judge::task_t *task);
+        network_task_judge::task_t *front_pop();
+        void quit();
+        void dispose(const network_task_judge::task_t *task);
+
+        void _clear();
+
+        std::mutex _mutex;
+        std::condition_variable _variable;
+        std::atomic_bool _quit;
+        std::list<network_task_judge::task_t *> _ls;
+        std::chrono::milliseconds &_threshold;
+        task_notify_t _cb;
+    };
+
+public:
+    static network_task_judge *instance();
+
+    void start(const int ms, const task_notify_t &callback);
+    void stop();
+
+    void add_task(const std::string network_status, const std::string network_info);
+
+private:
+    explicit network_task_judge() noexcept;
+    ~network_task_judge() noexcept;
+
+    static void run();
+
+private:
+    static network_task_judge _s_obj;
+
+    std::thread *_t;
+    std::atomic_bool _quit;
+    std::atomic_bool _is_init;
+    std::mutex _mutex;
+    std::chrono::milliseconds _threshold;
+
+    network_task_judge::task_queue_t *_q;
 };
 
 void test_timeout_object_function();
