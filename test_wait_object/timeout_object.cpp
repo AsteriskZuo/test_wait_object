@@ -1108,7 +1108,7 @@ void simple_thread_pool::init(const int thread_count)
 {
     if (!_is_init.exchange(true))
     {
-        _task_queue = new task_queue_t<task_func_t, task_param_t>(this);
+        _task_queue = new task_queue_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t>(this);
         assert(_task_queue);
         _thread_queue = new thread_queue_t(_task_queue);
         assert(_thread_queue);
@@ -1143,7 +1143,8 @@ void simple_thread_pool::uninit()
 }
 void simple_thread_pool::post(task_func_t func, task_param_t param, int priority /*= 0*/)
 {
-    task_t<task_func_t, task_param_t> *task = _task_queue->create_task(func, param, priority);
+    task_queue_t<task_func_t, task_param_t> *q = static_cast<task_queue_t<task_func_t, task_param_t> *>(_task_queue);
+    task_base_t *task = q->create_task(func, param, priority);
     _task_queue->push_back(task);
 }
 void simple_thread_pool::set_notify(task_notify_interface *notify)
@@ -1151,7 +1152,7 @@ void simple_thread_pool::set_notify(task_notify_interface *notify)
     _task_notify = notify;
 }
 
-simple_thread_pool::thread_queue_t::thread_queue_t(task_queue_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t> *q) noexcept
+simple_thread_pool::thread_queue_t::thread_queue_t(task_queue_base_t *q) noexcept
     : _q(q)
 {
 }
@@ -1205,11 +1206,15 @@ void simple_thread_pool::thread_run_t::run()
                 auto ts = std::move(_q->get_task_list());
                 for (auto iter = ts.begin(); iter != ts.end(); ++iter)
                 {
-                    task_t<task_func_t, task_param_t> *t = *iter;
-                    if (t && t->func)
+                    task_base_t *task = *iter;
+                    task_t<task_func_t, task_param_t> *t = nullptr;
+                    if (static_cast<void>(t = static_cast<task_t<task_func_t, task_param_t> *>(task)), nullptr != t)
                     {
-                        (t->func)(t->param);
-                        _q->destory_task(&t);
+                        if (t && t->func)
+                        {
+                            (t->func)(t->param);
+                            _q->destory_task(&task);
+                        }
                     }
                 }
             }
@@ -1228,22 +1233,26 @@ void simple_thread_pool::thread_run_t::run()
             break;
         }
 
-        task_t<task_func_t, task_param_t> *t = _q->front_pop();
-        if (t && t->func)
+        task_base_t *task = _q->front_pop();
+        task_t<task_func_t, task_param_t> *t = nullptr;
+        if (static_cast<void>(t = static_cast<task_t<task_func_t, task_param_t> *>(task)), nullptr != t)
         {
-            if (_q->_tp->_task_notify)
+            if (t && t->func)
             {
-                _q->_tp->_task_notify->task_run_before();
+                if (_q->_tp->_task_notify)
+                {
+                    _q->_tp->_task_notify->task_run_before();
+                }
+
+                (t->func)(t->param);
+
+                if (_q->_tp->_task_notify)
+                {
+                    _q->_tp->_task_notify->task_run_after();
+                }
+
+                _q->destory_task(&task);
             }
-
-            (t->func)(t->param);
-
-            if (_q->_tp->_task_notify)
-            {
-                _q->_tp->_task_notify->task_run_after();
-            }
-
-            _q->destory_task(&t);
         }
     }
 }
