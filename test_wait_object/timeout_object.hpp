@@ -16,6 +16,9 @@
 #include <list>
 #include <unordered_map>
 #include <chrono>
+#include <type_traits>
+#include <map>
+#include <iostream>
 
 class toop;
 
@@ -390,6 +393,404 @@ private:
     std::chrono::milliseconds _threshold;
 
     network_task_judge::task_queue_t *_q;
+};
+
+namespace std
+{
+#if _LIBCPP_STD_VER > 17
+#else
+    template <class T>
+    struct remove_cvref
+    {
+        typedef remove_cv_t<remove_reference_t<T>> type;
+    };
+#endif
+    template <class _Tp>
+    typename decay<_Tp>::type
+    decay_copy(_Tp &&__t)
+    {
+        return forward<_Tp>(__t);
+    }
+} // namespace std
+
+
+extern std::mutex s_mutex;
+
+static const char *test_current_time();
+static long long test_get_time_difference();
+
+class simple_thread_pool final
+{
+public:
+    typedef void *task_param_t;
+    typedef void (*task_func_t)(task_param_t);
+
+public:
+    template <class _Fp, class... _Args>
+    struct task_t
+    {
+        int id;
+        int pri;
+        std::tuple<typename std::decay<_Fp>::type, typename std::decay<_Args>::type...> params;
+
+        explicit task_t(const int priority, _Fp &&f, _Args &&... args) noexcept
+            : pri(priority), params(std::decay_copy(std::forward(f)), std::decay_copy(std::forward(args))...)
+        {
+            static std::atomic_int _s_id = {0};
+            if (0xffff <= (id = _s_id.fetch_add(1)))
+                id = _s_id.exchange(0);
+        }
+    };
+    template <>
+    struct task_t<task_func_t, task_param_t>
+    {
+        int id;
+        int pri;
+        task_func_t func;
+        task_param_t param;
+
+        explicit task_t(const task_func_t &f, const task_param_t &p, const int priority = 0) noexcept
+            : func(f), param(p), pri(priority)
+        {
+            static std::atomic_int _s_id = {0};
+            if (0xffff <= (id = _s_id.fetch_add(1)))
+                id = _s_id.exchange(0);
+        }
+    };
+
+    /**
+     * 没有采用继承std::thread的方式，因为它不建议继承使用
+     * 采用第二种方案，使用成员的方式进行封装使用
+     * 需要提供所有thread的公共方法
+     */
+    class thread_t final
+    {
+    private:
+        int id;
+        std::thread _t;
+
+    private:
+        thread_t(const thread_t &) = delete;
+        thread_t &operator=(const thread_t &) = delete;
+
+    public:
+        thread_t() noexcept {}
+        ~thread_t();
+        template <class _Fp, class... _Args,
+                  class = typename std::enable_if<
+                      !std::is_same<typename std::remove_cvref<_Fp>::type, std::thread>::value>::type>
+        explicit thread_t(_Fp &&f, _Args &&... args) : _t(f, args...) {}
+        thread_t(thread_t &&t) _NOEXCEPT : _t(std::move(t._t)) {}
+        thread_t &operator=(thread_t &&t) _NOEXCEPT
+        {
+            _t.operator=(std::move(t._t));
+            return *this;
+        }
+        void swap(thread_t &t) noexcept { std::swap(_t, t._t); }
+        bool joinable() const noexcept { return _t.joinable(); }
+        void join() { _t.join(); }
+        void detach() { _t.detach(); }
+        std::thread::id get_id() const noexcept { return _t.get_id(); }
+        std::thread::native_handle_type native_handle() noexcept { return _t.native_handle(); }
+
+        static unsigned hardware_concurrency() noexcept { return std::thread::hardware_concurrency(); }
+    };
+
+    template <class _Fp, class... _Args>
+    struct task_queue_t;
+    template<> struct task_queue_t<task_func_t, task_param_t>;
+    struct thread_run_t
+    {
+        task_queue_t<task_func_t, task_param_t> *_q;
+        thread_run_t(task_queue_t<task_func_t, task_param_t> *q) : _q(q) {}
+        virtual ~thread_run_t() {}
+        void run();
+    };
+
+    struct thread_queue_t
+    {
+        std::atomic_bool _is_started;
+        std::list<std::pair<thread_t *, thread_run_t *>> _ls;
+        task_queue_t<task_func_t, task_param_t> *_q;
+
+        explicit thread_queue_t(task_queue_t<task_func_t, task_param_t> *q) noexcept;
+        ~thread_queue_t();
+        void start(const int max);
+        void stop();
+    };
+
+    template <class _Fp, class... _Args>
+    struct task_queue_t
+    {
+        std::mutex _mutex;
+        std::condition_variable _variable;
+        std::atomic_bool _quit;
+        simple_thread_pool *_tp;
+
+        std::map<std::pair<int, int>, task_t<_Fp, _Args...> *> _tasks;
+
+        explicit task_queue_t(simple_thread_pool *tp) noexcept : _tp(tp), _quit(false) {}
+        ~task_queue_t() {}
+
+        void push_back(task_t<_Fp, _Args...> *task)
+        {
+            {
+                std::lock_guard<std::mutex> lock(_mutex);
+                _tasks.insert(std::make_pair(std::make_pair(task->pri, task->id), task));
+            }
+            _variable.notify_one();
+        }
+        task_t<_Fp, _Args...> *front_pop()
+        {
+            {
+                std::unique_lock<std::mutex> lock(_mutex);
+                _variable.wait(lock, [this]() -> bool {
+                    return _quit.load() || 0 != _tasks.size();
+                });
+            }
+            task_t<_Fp, _Args...> ret;
+            {
+                std::lock_guard<std::mutex> lock(_mutex);
+                if (_tasks.size() && !_quit.load())
+                {
+                    ret = _tasks.begin()->second;
+                    _tasks.erase(std::make_pair(ret->pri, ret->id));
+                }
+            }
+            return ret;
+        }
+        void clear()
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            for (auto iter = _tasks.begin(); iter != _tasks.end(); ++iter)
+            {
+                task_t<_Fp, _Args...> *t = iter->second;
+                delete t;
+            }
+        }
+        std::list<task_t<_Fp, _Args...> *> get_task_list()
+        {
+            std::list<task_t<_Fp, _Args...> *> ret;
+            {
+                std::lock_guard<std::mutex> lock(_mutex);
+                for (auto iter = _tasks.begin(); iter != _tasks.end(); ++iter)
+                {
+                    ret.push_back(iter->second);
+                }
+                _tasks.clear();
+            }
+            return ret;
+        }
+        void quit()
+        {
+            {
+                std::lock_guard<std::mutex> lock(_mutex);
+                _quit.store(true);
+            }
+            _variable.notify_all();
+        }
+
+        task_t<_Fp, _Args...> *create_task(int priority, _Fp &&f, _Args &&... args)
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            task_t<_Fp, _Args...> *task = new task_t<_Fp, _Args...>(priority, std::forward(f), std::forward(args)...);
+            assert(task);
+            _tasks.insert(std::make_pair(std::make_pair(task->pri, task->id), task));
+            return task;
+        }
+        void destory_task(task_t<_Fp, _Args...> **task)
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            if (task && *task)
+            {
+                auto iter = _tasks.find(std::make_pair((*task)->pri, (*task)->id));
+                if (iter != _tasks.end())
+                {
+                    _tasks.erase(iter);
+                    delete *task;
+                }
+            }
+            *task = nullptr;
+        }
+    };
+
+    template <>
+    struct task_queue_t<task_func_t, task_param_t>
+    {
+        std::mutex _mutex;
+        std::condition_variable _variable;
+        std::atomic_bool _quit;
+        std::map<std::pair<int, int>, task_t<task_func_t, task_param_t> *> _tasks;
+        simple_thread_pool *_tp;
+
+        explicit task_queue_t(simple_thread_pool *tp) noexcept : _tp(tp), _quit(false) {}
+        ~task_queue_t() { clear(); }
+
+        void push_back(task_t<task_func_t, task_param_t> *task)
+        {
+            {
+                std::lock_guard<std::mutex> lock(_mutex);
+                _tasks.insert(std::make_pair(std::make_pair(task->pri, task->id), task));
+                {
+                    std::lock_guard<std::mutex> lock(s_mutex);
+                    std::cout << __FUNCTION__ << ":" << __LINE__
+                              << ":t=" << test_current_time()
+                              << ":els=" << test_get_time_difference()
+                              << ":tid=" << std::this_thread::get_id()
+                              << ":pri=" << task->pri
+                              << ":oid=" << task->id
+                              << ":sz=" << _tasks.size()
+                              << std::endl;
+                }
+            }
+            _variable.notify_one();
+        }
+        task_t<task_func_t, task_param_t> *front_pop()
+        {
+            {
+                std::unique_lock<std::mutex> lock(_mutex);
+                _variable.wait(lock, [this]() -> bool {
+                    return _quit.load() || 0 != _tasks.size();
+                });
+            }
+            task_t<task_func_t, task_param_t> *ret = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(_mutex);
+                if (_tasks.size() && !_quit.load())
+                {
+                    ret = _tasks.begin()->second;
+                    _tasks.erase(std::make_pair(ret->pri, ret->id));
+                }
+            }
+            return ret;
+        }
+        void clear()
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            std::cout << __FUNCTION__ << ":" << __LINE__
+                      << ":t=" << test_current_time()
+                      << ":els=" << test_get_time_difference()
+                      << ":tid=" << std::this_thread::get_id()
+                      << std::endl;
+            for (auto iter = _tasks.begin(); iter != _tasks.end(); ++iter)
+            {
+                task_t<task_func_t, task_param_t> *t = iter->second;
+                delete t;
+            }
+        }
+        std::list<task_t<task_func_t, task_param_t> *> get_task_list()
+        {
+            std::list<simple_thread_pool::task_t<task_func_t, task_param_t> *> ret;
+            {
+                std::lock_guard<std::mutex> lock(_mutex);
+                for (auto iter = _tasks.begin(); iter != _tasks.end(); ++iter)
+                {
+                    ret.push_back(iter->second);
+                }
+                _tasks.clear();
+            }
+            return ret;
+        }
+        void quit()
+        {
+            {
+                std::lock_guard<std::mutex> lock(_mutex);
+                _quit.store(true);
+            }
+            _variable.notify_all();
+        }
+
+        task_t<task_func_t, task_param_t> *create_task(const task_func_t &func, const task_param_t &param, int priority = 0)
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            task_t<task_func_t, task_param_t> *task = new task_t<task_func_t, task_param_t>(func, param, priority);
+            assert(task);
+            _tasks.insert(std::make_pair(std::make_pair(task->pri, task->id), task));
+            return task;
+        }
+        void destory_task(task_t<task_func_t, task_param_t> **task)
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            if (task && *task)
+            {
+                auto iter = _tasks.find(std::make_pair((*task)->pri, (*task)->id));
+                if (iter != _tasks.end())
+                {
+                    _tasks.erase(iter);
+                    delete *task;
+                }
+            }
+            *task = nullptr;
+        }
+    };
+
+    enum task_strategy_t
+    {
+        task_strategy_join_all_task,
+        task_strategy_cancel_all_task,
+    };
+
+    /**
+     * 通知任务运行状态
+     */
+    class task_notify_interface
+    {
+    public:
+        virtual void task_run_before() = 0;
+        virtual void task_run_after() = 0;
+    };
+
+private:
+    task_queue_t<task_func_t, task_param_t> *_task_queue;
+    thread_queue_t *_thread_queue;
+    task_strategy_t _task_strategy;
+    task_notify_interface *_task_notify;
+
+public:
+public:
+    simple_thread_pool(/* args */);
+    ~simple_thread_pool();
+
+    static simple_thread_pool *instance();
+    static void uninstance();
+
+    void init(const int thread_count);
+    void uninit();
+
+    /**
+     * 异步任务执行
+     * priority [-1 - 1] -1 低优先级 0 普通 1 高优先级
+     * 
+     * @param func 
+     * @param param
+     * @param priority 任务优先级
+     */
+    void post(task_func_t func, task_param_t param, int priority = 0);
+
+    /**
+     * 异步任务执行
+     * priority [-1 - 1] -1 低优先级 0 普通 1 高优先级
+     * 
+     * @param func 
+     * @param param
+     * @param priority 任务优先级
+     */
+    template <class _Fp, class... _Args>
+    void post(const int priority, _Fp &&f, _Args &&... args)
+    {
+    }
+
+    /**
+     * 设置任务通知，默认没有通知
+     * 设置通知之后，可以收到任务执行前后等通知
+     * @param notify 通知对象
+     */
+    void set_notify(task_notify_interface *notify);
+
+private:
+private:
+    static simple_thread_pool *_s_obj;
+    std::atomic_bool _is_init;
 };
 
 void test_timeout_object_function();

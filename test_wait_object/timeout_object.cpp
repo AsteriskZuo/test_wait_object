@@ -14,7 +14,7 @@
 #include <sstream>
 #include <random>
 
-static std::mutex s_mutex;
+std::mutex s_mutex;
 
 static const char *test_current_time();
 static long long test_get_time_difference();
@@ -33,9 +33,23 @@ static void test15();
 static void test16();
 static void test17();
 static void test18();
+static void test19();
+static void test22();
+static void test23();
+static void test24();
+static void test25();
+static void test26();
+static void test27();
+static void test28();
+static void test29();
+static void test30();
+static void test31();
+static void test32();
+static void test33();
+static void test34();
 void test_timeout_object_function()
 {
-    test15();
+    test29();
 }
 
 timeout_object timeout_object::_s_obj;
@@ -661,13 +675,13 @@ object_timeout_observer::timeout_object_t::timeout_object_t(const std::string na
     //    timeout_object_t(std::move(name), 0);
 
     /* 2.repetition */
-    //    if (0xff <= (id = _timeout_object_t_id.fetch_add(1)))
+    //    if (0xffff <= (id = _timeout_object_t_id.fetch_add(1)))
     //        id = _timeout_object_t_id.exchange(0);
     //    object_timeout_observer::instance()->add_object(std::addressof(*this), name, 0);
 }
 object_timeout_observer::timeout_object_t::timeout_object_t(const std::string name, const int ms) noexcept
 {
-    if (0xff <= (id = _timeout_object_t_id.fetch_add(1)))
+    if (0xffff <= (id = _timeout_object_t_id.fetch_add(1)))
         id = _timeout_object_t_id.exchange(0);
     object_timeout_observer::instance()->add_object(std::addressof(*this), name, ms);
 }
@@ -1054,9 +1068,184 @@ void network_task_judge::task_queue_t::dispose(const network_task_judge::task_t 
 network_task_judge::task_t::task_t() noexcept
 {
     static std::atomic_int _s_id = {0};
-    if (0xff <= (id = _s_id.fetch_add(1)))
+    if (0xffff <= (id = _s_id.fetch_add(1)))
         id = _s_id.exchange(0);
     task_create_point = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+}
+
+simple_thread_pool *simple_thread_pool::_s_obj = nullptr;
+
+simple_thread_pool *simple_thread_pool::instance()
+{
+    if (!_s_obj)
+    {
+        _s_obj = new simple_thread_pool();
+    }
+    assert(_s_obj);
+    return _s_obj;
+}
+
+void simple_thread_pool::uninstance()
+{
+    if (_s_obj)
+    {
+        delete _s_obj;
+    }
+    _s_obj = nullptr;
+}
+
+simple_thread_pool::simple_thread_pool(/* args */)
+    : _is_init(false), _task_strategy(task_strategy_cancel_all_task), _task_notify(nullptr)
+{
+}
+
+simple_thread_pool::~simple_thread_pool()
+{
+    uninit();
+}
+
+void simple_thread_pool::init(const int thread_count)
+{
+    if (!_is_init.exchange(true))
+    {
+        _task_queue = new task_queue_t<task_func_t, task_param_t>(this);
+        assert(_task_queue);
+        _thread_queue = new thread_queue_t(_task_queue);
+        assert(_thread_queue);
+        _thread_queue->start(thread_count);
+    }
+}
+void simple_thread_pool::uninit()
+{
+    if (_is_init.exchange(false))
+    {
+        if (_task_queue)
+        {
+            _task_queue->quit();
+        }
+        if (_thread_queue)
+        {
+            _thread_queue->stop();
+            delete _thread_queue;
+        }
+        _thread_queue = nullptr;
+        if (_task_queue)
+        {
+            delete _task_queue;
+        }
+        _task_queue = nullptr;
+    }
+    std::cout << __FUNCTION__ << ":" << __LINE__
+              << ":t=" << test_current_time()
+              << ":els=" << test_get_time_difference()
+              << ":tid=" << std::this_thread::get_id()
+              << std::endl;
+}
+void simple_thread_pool::post(task_func_t func, task_param_t param, int priority /*= 0*/)
+{
+    task_t<task_func_t, task_param_t> *task = _task_queue->create_task(func, param, priority);
+    _task_queue->push_back(task);
+}
+void simple_thread_pool::set_notify(task_notify_interface *notify)
+{
+    _task_notify = notify;
+}
+
+simple_thread_pool::thread_queue_t::thread_queue_t(task_queue_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t> *q) noexcept
+    : _q(q)
+{
+}
+simple_thread_pool::thread_queue_t::~thread_queue_t()
+{
+    stop();
+}
+void simple_thread_pool::thread_queue_t::start(const int max)
+{
+    if (!_is_started.exchange(true))
+    {
+        for (size_t i = 0; i < max; i++)
+        {
+            thread_run_t *r = new thread_run_t(_q);
+            thread_t *t = new thread_t(&thread_run_t::run, r);
+            _ls.push_back(std::make_pair(t, r));
+        }
+    }
+}
+void simple_thread_pool::thread_queue_t::stop()
+{
+    if (_is_started.exchange(false))
+    {
+        for (auto iter = _ls.begin(); iter != _ls.end(); ++iter)
+        {
+            if (iter->first->joinable())
+            {
+                iter->first->join();
+            }
+            delete iter->second;
+            delete iter->first;
+        }
+        _ls.clear();
+    }
+}
+
+simple_thread_pool::thread_t::~thread_t()
+{
+}
+
+void simple_thread_pool::thread_run_t::run()
+{
+    for (;;)
+    {
+        if (_q->_quit.load())
+        {
+            switch (_q->_tp->_task_strategy)
+            {
+            case task_strategy_join_all_task:
+            {
+                auto ts = std::move(_q->get_task_list());
+                for (auto iter = ts.begin(); iter != ts.end(); ++iter)
+                {
+                    task_t<task_func_t, task_param_t> *t = *iter;
+                    if (t && t->func)
+                    {
+                        (t->func)(t->param);
+                        _q->destory_task(&t);
+                    }
+                }
+            }
+            break;
+            case task_strategy_cancel_all_task:
+            {
+                _q->clear();
+            }
+            break;
+            default:
+            {
+                _q->clear();
+            }
+            break;
+            }
+            break;
+        }
+
+        task_t<task_func_t, task_param_t> *t = _q->front_pop();
+        if (t && t->func)
+        {
+            if (_q->_tp->_task_notify)
+            {
+                _q->_tp->_task_notify->task_run_before();
+            }
+
+            (t->func)(t->param);
+
+            if (_q->_tp->_task_notify)
+            {
+                _q->_tp->_task_notify->task_run_after();
+            }
+
+            _q->destory_task(&t);
+        }
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1688,7 +1877,7 @@ static void test15()
     std::thread t(network_task_judge_add_task);
     t.detach();
     // std::this_thread::sleep_for(std::chrono::milliseconds(15 * network_task_judge_factor));//7
-    std::this_thread::sleep_for(std::chrono::milliseconds(6 * network_task_judge_factor));//7
+    std::this_thread::sleep_for(std::chrono::milliseconds(6 * network_task_judge_factor)); //7
     network_task_judge::instance()->stop();
 }
 int network_task_judge_count = 1000; //1000 10000 100000 //3
@@ -1732,4 +1921,661 @@ static void test18()
     // std::this_thread::sleep_for(std::chrono::milliseconds(network_task_judge_count * 3 * network_task_judge_factor + 4 * network_task_judge_factor * 2));//4
     std::this_thread::sleep_for(std::chrono::milliseconds(15000)); //5
     network_task_judge::instance()->stop();
+}
+
+static void test_function_pointer_func()
+{
+}
+
+static void test_function_pointer()
+{
+    typedef void(func)();
+    typedef void (*func2)();
+
+    func *f1 = test_function_pointer_func;
+    f1();
+    f1 = nullptr;
+
+    func2 f2 = test_function_pointer_func;
+    f2();
+    f2 = nullptr;
+}
+/**
+ * 测试函数指针
+ */
+static void test19()
+{
+    test_function_pointer();
+}
+
+class test_type_traits
+{
+public:
+    int v;
+};
+template <class _Tp>
+struct my_remove_reference
+{
+    static int __id;
+    typedef _Tp type;
+};
+template <class _Tp>
+int my_remove_reference<_Tp>::__id = 0;
+template <class _Tp>
+struct my_remove_reference<_Tp &>
+{
+    typedef _Tp type;
+};
+template <class _Tp>
+struct my_remove_reference<_Tp &&>
+{
+    typedef _Tp type;
+};
+static void test_type_traits_function()
+{
+    int a = 3;
+    int &ar = a;
+    int b = 2;
+    int &&arr = 3;
+    test_type_traits &&tt = test_type_traits();
+    std::remove_reference<test_type_traits &&>::type tt2;
+    my_remove_reference<test_type_traits &>::type tt3;
+    tt2.v = 1;
+}
+/**
+ * 测试type traits
+ */
+static void test20()
+{
+    test_type_traits_function();
+}
+
+#include <iostream>
+
+template <int N>
+class Sum
+{
+public:
+    enum
+    {
+        sum = Sum<N - 1>::sum + N
+    };
+};
+
+template <>
+class Sum<0>
+{
+public:
+    enum
+    {
+        sum = 0
+    };
+};
+/**
+ * 递归模板编程
+ */
+static void test21()
+{
+    std::cout << "sum of 1 to 100 is: " << Sum<100>::sum << std::endl;
+}
+
+class data_object
+{
+private:
+public:
+    data_object();
+    ~data_object();
+};
+
+data_object::data_object(/* args */)
+{
+    std::cout << __FUNCTION__ << ":" << __LINE__ << std::endl;
+}
+
+data_object::~data_object()
+{
+    std::cout << __FUNCTION__ << ":" << __LINE__ << std::endl;
+}
+
+class data_object_wrapper
+{
+private:
+    data_object _obj;
+
+public:
+    data_object_wrapper();
+    ~data_object_wrapper();
+};
+
+data_object_wrapper::data_object_wrapper(/* args */)
+    : _obj()
+{
+    std::cout << __FUNCTION__ << ":" << __LINE__ << std::endl;
+}
+
+data_object_wrapper::~data_object_wrapper()
+{
+    _obj.~data_object(); //影响执行顺序
+    std::cout << __FUNCTION__ << ":" << __LINE__ << std::endl;
+}
+
+/**
+ * 测试类的数据成员的生命周期问题
+ */
+static void test22()
+{
+    {
+        data_object_wrapper obj;
+    }
+}
+
+static void test_thread1()
+{
+    //    simple_thread_pool::thread_t *t = new simple_thread_pool::thread_t();
+    //    t = new simple_thread_pool::thread_t(&simple_thread_pool::thread_t::run, t);
+    //    t->detach();
+    //    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    //    simple_thread_pool::thread_t *t2 = new simple_thread_pool::thread_t();
+    //    simple_thread_pool::thread_t *t22 = t2;
+    //    simple_thread_pool::thread_t **tt = &t2;
+    //    simple_thread_pool::thread_t *t3 = new simple_thread_pool::thread_t(&simple_thread_pool::thread_t::run, t2);
+    //    t3->detach();
+    //    // delete t22;
+    //    delete *tt;
+    //    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    //    delete t3;
+    std::cout << __func__ << std::endl;
+}
+/**
+ * 这样使用线程对吗？
+ */
+static void test23()
+{
+    test_thread1();
+}
+
+static void test_function2()
+{
+    std::cout << __func__ << ":" << __LINE__ << std::endl;
+}
+static void test_function3(const int ms)
+{
+    std::cout << __func__ << ":" << __LINE__ << ":ms=" << ms << std::endl;
+}
+class test_invoke
+{
+private:
+    /* data */
+public:
+    test_invoke(/* args */);
+    ~test_invoke();
+    void print()
+    {
+        std::cout << __func__ << ":" << __LINE__ << std::endl;
+    }
+    void print2(int v)
+    {
+        std::cout << __func__ << ":" << __LINE__ << ":ms=" << v << std::endl;
+    }
+};
+
+test_invoke::test_invoke(/* args */)
+{
+}
+
+test_invoke::~test_invoke()
+{
+}
+
+template <class _Fp, class _A0, class... _Args,
+          class = std::__enable_if_bullet1<_Fp, _A0>>
+inline __attribute__((__visibility__("hidden"))) __attribute__((internal_linkage)) auto
+__my_invoke(_Fp &&__f, _A0 &&__a0, _Args &&... __args) noexcept(noexcept((std::__1::forward<_A0>(__a0).*__f)(std::__1::forward<_Args>(__args)...))) -> decltype((std::__1::forward<_A0>(__a0).*__f)(std::__1::forward<_Args>(__args)...))
+{
+    return (std::__1::forward<_A0>(__a0).*__f)(std::__1::forward<_Args>(__args)...);
+}
+template <class _Fp, class _A0, class... _Args,
+          class = std::__enable_if_bullet1<_Fp, _A0>>
+void test_class_memeber_function(_Fp &&__f, _A0 &&__a0, _Args &&... __args)
+{
+    //    std::cout << __func__ << std::endl;
+    (std::__1::forward<_A0>(__a0).*__f)(std::__1::forward<_Args>(__args)...);
+}
+template <class _Fp, class _A0, class... _Args,
+          class = std::__enable_if_bullet1<_Fp, _A0>>
+void test_class_memeber_ptr_function(_Fp &&__f, _A0 *&&__a0, _Args &&... __args) noexcept(noexcept((__a0->*__f)(std::__1::forward<_Args>(__args)...)))
+{
+    //    std::cout << __func__ << std::endl;
+    return (__a0->*__f)(std::__1::forward<_Args>(__args)...);
+}
+template <class _Fp, class _A0, class... _Args,
+          class = std::__enable_if_bullet1<_Fp, _A0>>
+inline __attribute__((__visibility__("hidden"))) __attribute__((internal_linkage)) auto
+__my_invoke_ptr(_Fp &&__f, _A0 *__a0, _Args &&... __args) noexcept(noexcept((__a0->*__f)(std::__1::forward<_Args>(__args)...))) -> decltype((__a0->*__f)(std::__1::forward<_Args>(__args)...))
+{
+    return (__a0->*__f)(std::__1::forward<_Args>(__args)...);
+}
+/**
+ * 源码测试
+ */
+static void test24()
+{
+    test_invoke obj;
+    __my_invoke(&test_invoke::print, obj);
+    __my_invoke(&test_invoke::print2, obj, 3);
+
+    test_class_memeber_function(&test_invoke::print, obj);
+    test_class_memeber_ptr_function(&test_invoke::print, &obj);
+    test_class_memeber_ptr_function(&test_invoke::print2, &obj, 4);
+
+    test_invoke *pobj = &obj;
+    __my_invoke_ptr(&test_invoke::print, pobj);
+    __my_invoke_ptr(&test_invoke::print2, pobj, 5);
+}
+
+class test_is_array_class
+{
+};
+
+/**
+ * 测试是否是数组
+ */
+static void test25()
+{
+    std::cout << std::boolalpha;
+    std::cout << std::is_array<test_is_array_class>::value << '\n';
+    std::cout << std::is_array<test_is_array_class[]>::value << '\n';
+    std::cout << std::is_array<test_is_array_class *>::value << '\n'; //false
+    std::cout << std::is_array<test_is_array_class[3]>::value << '\n';
+    std::cout << std::is_array<float>::value << '\n';
+    std::cout << std::is_array<int>::value << '\n';
+    std::cout << std::is_array<int[]>::value << '\n';
+    std::cout << std::is_array<int[3]>::value << '\n';
+}
+
+struct test_is_function_struct
+{
+    int fun() const &;
+    static int fun2();
+};
+
+template <typename>
+struct PM_traits
+{
+};
+
+template <class T, class U>
+struct PM_traits<U T::*>
+{
+    using member_type = U;
+};
+
+int test_is_function_function();
+
+static void test26()
+{
+    std::cout << std::boolalpha;
+    std::cout << std::is_function<test_is_function_struct>::value << '\n';
+    std::cout << std::is_function<int(int)>::value << '\n';
+    std::cout << std::is_function<decltype(test_is_function_function)>::value << '\n';
+    std::cout << std::is_function<int>::value << '\n';
+
+    using T = PM_traits<decltype(&test_is_function_struct::fun)>::member_type; // T 为 int() const&
+    std::cout << std::is_function<T>::value << '\n';
+    using T2 = decltype(&test_is_function_struct::fun);
+    std::cout << std::is_function<T2>::value << '\n';
+    using T3 = decltype(&test_is_function_struct::fun2);
+    std::cout << std::is_function<T3>::value << '\n';
+}
+
+class test_type_parse_traits
+{
+private:
+    /* data */
+public:
+    test_type_parse_traits(/* args */);
+    ~test_type_parse_traits();
+};
+
+test_type_parse_traits::test_type_parse_traits(/* args */)
+{
+}
+
+test_type_parse_traits::~test_type_parse_traits()
+{
+}
+
+template <typename T>
+struct TypeParseTraits
+{
+};
+
+#define REGISTER_PARSE_TYPE(X)   \
+    template <>                  \
+    struct TypeParseTraits<X>    \
+    {                            \
+        static const char *name; \
+        typedef X type;          \
+    };                           \
+    const char *TypeParseTraits<X>::name = #X
+
+REGISTER_PARSE_TYPE(int);
+REGISTER_PARSE_TYPE(double);
+REGISTER_PARSE_TYPE(test_type_parse_traits);
+
+/**
+ * 获取模板参数类型
+ */
+static void test27()
+{
+    //ref: https://stackoverflow.com/questions/1055452/c-get-name-of-type-in-template
+    //ref: https://en.cppreference.com/w/cpp/types/type_info/name
+    //ref: https://itanium-cxx-abi.github.io/cxx-abi/abi.html#typeid
+    //ref: https://itanium-cxx-abi.github.io/cxx-abi/abi.html#mangling-type
+
+    std::cout << __func__ << ":" << __LINE__ << ":name=" << TypeParseTraits<int>::name << std::endl;
+    std::cout << __func__ << ":" << __LINE__ << ":name=" << typeid(TypeParseTraits<int>::type).name() << std::endl;
+
+    std::cout << __func__ << ":" << __LINE__ << ":name=" << TypeParseTraits<test_type_parse_traits>::name << std::endl;
+    std::cout << __func__ << ":" << __LINE__ << ":name=" << typeid(TypeParseTraits<test_type_parse_traits>::type).name() << std::endl;
+}
+
+#include <cxxabi.h>
+
+template <typename T>
+std::string type_name()
+{
+    int status;
+    std::string tname = typeid(T).name();
+    char *demangled_name = abi::__cxa_demangle(tname.c_str(), NULL, NULL, &status);
+    if (status == 0)
+    {
+        tname = demangled_name;
+        std::free(demangled_name);
+    }
+    return tname;
+}
+
+/**
+ * gcc or clang typeid().name() is not human readable
+ * 在mac上获取类型名称信息
+ */
+static void test28()
+{
+    std::cout << __func__ << ":" << __LINE__ << ":name=" << type_name<int>().c_str() << std::endl;
+    std::cout << __func__ << ":" << __LINE__ << ":name=" << type_name<test_type_parse_traits>().c_str() << std::endl;
+    std::cout << __func__ << ":" << __LINE__ << ":name=" << type_name<std::decay<test_type_parse_traits>::type>().c_str() << std::endl;
+    std::cout << __func__ << ":" << __LINE__ << ":name=" << type_name<std::decay<test_type_parse_traits *>::type>().c_str() << std::endl;
+    std::cout << __func__ << ":" << __LINE__ << ":name=" << type_name<std::decay<test_type_parse_traits &&>::type>().c_str() << std::endl;
+}
+
+class work_object
+{
+private:
+    /* data */
+public:
+    work_object(/* args */);
+    ~work_object();
+    void operator()()
+    {
+        std::cout << __func__ << ":" << __LINE__ << ":tid=" << std::this_thread::get_id() << std::endl;
+    }
+    void work(void *)
+    {
+        std::cout << __func__ << ":" << __LINE__ << ":tid=" << std::this_thread::get_id() << std::endl;
+    }
+    static void work2(void *)
+    {
+        std::lock_guard<std::mutex> lock(s_mutex);
+        std::cout << __FUNCTION__ << ":" << __LINE__
+                  << ":t=" << test_current_time()
+                  << ":els=" << test_get_time_difference()
+                  << ":tid=" << std::this_thread::get_id()
+                  << std::endl;
+    }
+};
+
+work_object::work_object(/* args */)
+{
+}
+
+work_object::~work_object()
+{
+}
+
+static void test_add_thread_pool_task()
+{
+    int count = 1000;
+    work_object *wobjs[count];
+    for (size_t i = 0; i < count; i++)
+    {
+        // work_object *wobj = new work_object();
+        simple_thread_pool::instance()->post(&work_object::work2, nullptr);
+    }
+    for (size_t i = 0; i < count; i++)
+    {
+    }
+}
+static void test_thread_pool_1()
+{
+    simple_thread_pool::instance()->init(5);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    test_add_thread_pool_task();
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+    simple_thread_pool::instance()->uninit();
+    simple_thread_pool::uninstance();
+}
+/**
+ * 简单测试线程池
+ */
+static void test29()
+{
+    s_last = test_get_current_time();
+    test_thread_pool_1();
+}
+
+class test_condition_mutex
+{
+private:
+    std::mutex _mutex;
+    std::condition_variable _variable;
+
+public:
+    std::atomic_bool _quit;
+    test_condition_mutex(/* args */);
+    ~test_condition_mutex();
+    void work1()
+    {
+        std::cout << __FUNCTION__ << ":" << __LINE__
+                  << ":t=" << test_current_time()
+                  << ":els=" << test_get_time_difference()
+                  << ":tid=" << std::this_thread::get_id()
+                  << std::endl;
+        {
+            std::unique_lock<std::mutex> lock(_mutex);
+            _variable.wait(lock, [this]() -> bool {
+                return _quit;
+            });
+        }
+        std::cout << __FUNCTION__ << ":" << __LINE__
+                  << ":t=" << test_current_time()
+                  << ":els=" << test_get_time_difference()
+                  << ":tid=" << std::this_thread::get_id()
+                  << std::endl;
+    }
+};
+
+test_condition_mutex::test_condition_mutex(/* args */)
+{
+}
+
+test_condition_mutex::~test_condition_mutex()
+{
+}
+
+static void test30()
+{
+    test_condition_mutex obj;
+    std::cout << __FUNCTION__ << ":" << __LINE__
+              << ":t=" << test_current_time()
+              << ":els=" << test_get_time_difference()
+              << ":tid=" << std::this_thread::get_id()
+              << std::endl;
+    std::thread t1(&test_condition_mutex::work1, &obj);
+    std::cout << __FUNCTION__ << ":" << __LINE__
+              << ":t=" << test_current_time()
+              << ":els=" << test_get_time_difference()
+              << ":tid=" << std::this_thread::get_id()
+              << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    std::cout << __FUNCTION__ << ":" << __LINE__
+              << ":t=" << test_current_time()
+              << ":els=" << test_get_time_difference()
+              << ":tid=" << std::this_thread::get_id()
+              << std::endl;
+    t1.join();
+    std::cout << __FUNCTION__ << ":" << __LINE__
+              << ":t=" << test_current_time()
+              << ":els=" << test_get_time_difference()
+              << ":tid=" << std::this_thread::get_id()
+              << std::endl;
+}
+static void test31()
+{
+    test_condition_mutex obj;
+    std::cout << __FUNCTION__ << ":" << __LINE__
+              << ":t=" << test_current_time()
+              << ":els=" << test_get_time_difference()
+              << ":tid=" << std::this_thread::get_id()
+              << std::endl;
+    simple_thread_pool::thread_t t1(&test_condition_mutex::work1, &obj);
+    std::cout << __FUNCTION__ << ":" << __LINE__
+              << ":t=" << test_current_time()
+              << ":els=" << test_get_time_difference()
+              << ":tid=" << std::this_thread::get_id()
+              << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    std::cout << __FUNCTION__ << ":" << __LINE__
+              << ":t=" << test_current_time()
+              << ":els=" << test_get_time_difference()
+              << ":tid=" << std::this_thread::get_id()
+              << std::endl;
+    t1.join();
+    std::cout << __FUNCTION__ << ":" << __LINE__
+              << ":t=" << test_current_time()
+              << ":els=" << test_get_time_difference()
+              << ":tid=" << std::this_thread::get_id()
+              << std::endl;
+}
+
+static void test_join_1(test_condition_mutex *obj)
+{
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    std::cout << __FUNCTION__ << ":" << __LINE__
+              << ":t=" << test_current_time()
+              << ":els=" << test_get_time_difference()
+              << ":tid=" << std::this_thread::get_id()
+              << std::endl;
+    delete obj;
+}
+static void test_thread_2()
+{
+    test_condition_mutex *obj = new test_condition_mutex();
+    simple_thread_pool::thread_t t(test_join_1, obj);
+    t.detach();
+}
+/**
+ * 线程对象会先运行体释放，会导致问题吗？
+ * 如果使用该线程对象就会导致未知行为
+ * 如果仅仅在结构体里面，应该没有问题
+ */
+static void test32()
+{
+    test_thread_2();
+}
+
+static void test_thread_function()
+{
+}
+std::thread *tb = nullptr;
+static void test_thread_A()
+{
+    std::cout << __FUNCTION__ << ":" << __LINE__
+              << ":t=" << test_current_time()
+              << ":els=" << test_get_time_difference()
+              << ":tid=" << std::this_thread::get_id()
+              << std::endl;
+    tb = new std::thread(test_thread_function);
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    std::cout << __FUNCTION__ << ":" << __LINE__
+              << ":t=" << test_current_time()
+              << ":els=" << test_get_time_difference()
+              << ":tid=" << std::this_thread::get_id()
+              << std::endl;
+}
+static void test_thread_C()
+{
+    std::cout << __FUNCTION__ << ":" << __LINE__
+              << ":t=" << test_current_time()
+              << ":els=" << test_get_time_difference()
+              << ":tid=" << std::this_thread::get_id()
+              << std::endl;
+    tb->join();
+    delete tb;
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    std::cout << __FUNCTION__ << ":" << __LINE__
+              << ":t=" << test_current_time()
+              << ":els=" << test_get_time_difference()
+              << ":tid=" << std::this_thread::get_id()
+              << std::endl;
+}
+/**
+ * 在线程A创建线程B
+ * 在线程C销毁线程join B
+ */
+static void test33()
+{
+    if (true)
+    {
+        std::thread t1(test_thread_A);
+        t1.detach();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        std::thread t2(test_thread_C);
+        t2.detach();
+    }
+    if (false)
+    {
+        std::thread t1(test_thread_A);
+        t1.detach();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        test_thread_C();
+    }
+}
+
+static void test_map()
+{
+    std::map<std::pair<int, int>, std::string> list;
+    list.insert(std::make_pair(std::make_pair(-1, 1), "-11"));
+    list.insert(std::make_pair(std::make_pair(0, 1), "01"));
+    list.insert(std::make_pair(std::make_pair(1, 1), "11"));
+    list.insert(std::make_pair(std::make_pair(1, 2), "12"));
+    list.insert(std::make_pair(std::make_pair(2, 2), "22"));
+    for (auto iter = list.begin(); iter != list.end(); ++iter)
+    {
+        std::cout << __FUNCTION__ << ":" << __LINE__
+                  << ":t=" << test_current_time()
+                  << ":els=" << test_get_time_difference()
+                  << ":tid=" << std::this_thread::get_id()
+                  << ":key1=" << iter->first.first
+                  << ":key2=" << iter->first.second
+                  << ":v=" << iter->second
+                  << std::endl;
+    }
+}
+/**
+ * 测试map排序
+ */
+static void test34()
+{
+    test_map();
 }

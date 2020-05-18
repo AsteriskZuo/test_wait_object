@@ -66,6 +66,10 @@
         "numeric": "cpp",
         "random": "cpp",
         "__functional_03": "cpp",
-        "__cxx_version": "cpp"
+        "__cxx_version": "cpp",
+        "__functional_base_03": "cpp",
+        "memory_resource": "cpp",
+        "__tree": "cpp",
+        "map": "cpp"
     }
 }
