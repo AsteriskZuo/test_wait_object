@@ -49,9 +49,11 @@ static void test32();
 static void test33();
 static void test34();
 static void test35();
+static void test36();
+static void test37();
 void test_timeout_object_function()
 {
-    test29();
+    test37();
 }
 
 timeout_object timeout_object::_s_obj;
@@ -1110,13 +1112,13 @@ void simple_thread_pool::init(const int thread_count)
 {
     if (!_is_init.exchange(true))
     {
-        _thread_count = thread_count;
-        _task_queue_strategy = task_queue_strategy_fix_param;
-        _task_queue = new task_queue_t<task_func_t, task_param_t>(this);
-        assert(_task_queue);
-        _thread_queue = new thread_queue_t(_task_queue);
-        assert(_thread_queue);
-        _thread_queue->start<task_func_t, task_param_t>(_thread_count);
+        // _thread_count = thread_count;
+        // _task_queue_strategy = task_queue_strategy_fix_param;
+        // _task_queue = new task_queue_t<task_func_t, task_param_t>(this);
+        // assert(_task_queue);
+        // _thread_queue = new thread_queue_t(_task_queue);
+        // assert(_thread_queue);
+        // _thread_queue->start<task_func_t, task_param_t>(_thread_count);
     }
 }
 template <class _Fp, class... _Args>
@@ -1161,13 +1163,13 @@ void simple_thread_pool::uninit()
 }
 void simple_thread_pool::post(task_func_t func, task_param_t param, int priority /*= 0*/)
 {
-    if (task_queue_strategy_fix_param == _task_queue_strategy)
-    {
-        task_queue_t<task_func_t, task_param_t> *q = dynamic_cast<task_queue_t<task_func_t, task_param_t> *>(_task_queue);
-        task_base_t *task = q->create_task(func, param, priority);
-        _task_queue->push_back(task);
-    }
-    else
+    // if (task_queue_strategy_fix_param == _task_queue_strategy)
+    // {
+    //     task_queue_t<task_func_t, task_param_t> *q = dynamic_cast<task_queue_t<task_func_t, task_param_t> *>(_task_queue);
+    //     task_base_t *task = q->create_task(func, param, priority);
+    //     _task_queue->push_back(task);
+    // }
+    // else
     {
         std::stringstream ss;
         ss << __FUNCTION__ << ":" << __LINE__ << ":error="
@@ -1255,26 +1257,24 @@ void simple_thread_pool::thread_run_t::run()
                 for (auto iter = ts.begin(); iter != ts.end(); ++iter)
                 {
                     task_base_t *task = *iter;
-                    task_t<task_func_t, task_param_t> *t1 = nullptr;
+                    // task_t<task_func_t, task_param_t> *t1 = nullptr;
                     task_t<_Fp, _Args...> *t2 = nullptr;
-                    if (static_cast<void>(t1 = dynamic_cast<task_t<task_func_t, task_param_t> *>(task)), nullptr != t1)
-                    {
-                        if (t1 && t1->func)
-                        {
-                            (t1->func)(t1->param);
-                            _q->destory_task(&task);
-                        }
-                    }
-                    else if (static_cast<void>(t2 = dynamic_cast<task_t<_Fp, _Args...> *>(task)), nullptr != t2)
+                    // if (static_cast<void>(t1 = dynamic_cast<task_t<task_func_t, task_param_t> *>(task)), nullptr != t1)
+                    // {
+                    //     if (t1 && t1->func)
+                    //     {
+                    //         (t1->func)(t1->param);
+                    //         _q->destory_task(&task);
+                    //     }
+                    // }
+                    if (static_cast<void>(t2 = dynamic_cast<task_t<_Fp, _Args...> *>(task)), nullptr != t2)
                     {
                         //ref: https://stackoverflow.com/questions/7858817/unpacking-a-tuple-to-call-a-matching-function-pointer
                         if (t2)
                         {
-                            std::tuple<_Fp, _Args...> ttt;
-                            // std::tuple<typename std::decay<_Fp>::type, typename std::decay<_Args>::type...> params;
-                            typedef typename std::__make_tuple_indices<std::tuple_size<std::tuple<_Fp, _Args...>>::value, 0>::type _Index;
-                            // std::__invoke(std::move(std::get<_Index>(ttt))...);
-                            // std::__thread_execute(t2->params, _Index());
+                            static_assert(std::is_same<std::tuple<_Fp, _Args...>, std::tuple<typename std::decay<_Fp>::type, typename std::decay<_Args>::type...>>::value, "error");
+                            typedef typename std::__make_tuple_indices<std::tuple_size<std::tuple<_Fp, _Args...>>::value, 1>::type _Index;
+                            //                            std::function_call(t2->params, _Index());
                             _q->destory_task(&task);
                         }
                     }
@@ -1303,26 +1303,26 @@ void simple_thread_pool::thread_run_t::run()
         }
 
         task_base_t *task = _q->front_pop();
-        task_t<task_func_t, task_param_t> *t = nullptr;
-        if (static_cast<void>(t = dynamic_cast<task_t<task_func_t, task_param_t> *>(task)), nullptr != t)
-        {
-            if (t && t->func)
-            {
-                if (_q->_tp->_task_notify)
-                {
-                    _q->_tp->_task_notify->task_run_before();
-                }
+        // task_t<task_func_t, task_param_t> *t = nullptr;
+        // if (static_cast<void>(t = dynamic_cast<task_t<task_func_t, task_param_t> *>(task)), nullptr != t)
+        // {
+        //     if (t && t->func)
+        //     {
+        //         if (_q->_tp->_task_notify)
+        //         {
+        //             _q->_tp->_task_notify->task_run_before();
+        //         }
 
-                (t->func)(t->param);
+        //         (t->func)(t->param);
 
-                if (_q->_tp->_task_notify)
-                {
-                    _q->_tp->_task_notify->task_run_after();
-                }
+        //         if (_q->_tp->_task_notify)
+        //         {
+        //             _q->_tp->_task_notify->task_run_after();
+        //         }
 
-                _q->destory_task(&task);
-            }
-        }
+        //         _q->destory_task(&task);
+        //     }
+        // }
     }
 }
 
@@ -2778,13 +2778,13 @@ static void test35()
     std::cout << "1:hash_code:" << typeid(simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t>).hash_code() << std::endl;
     std::cout << "2:hash_code:" << typeid(simple_thread_pool::task_t<work_object_memeber_function_t, int, void *>).hash_code() << std::endl;
 
-    simple_thread_pool::task_base_t *t1 = new simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t>(&work_object::work2, nullptr);
+    //    simple_thread_pool::task_base_t *t1 = new simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t>(&work_object::work2, nullptr);
     simple_thread_pool::task_base_t *t2 = new simple_thread_pool::task_t<work_object_memeber_function_t, int, void *>(0, &work_object::work3, 2, nullptr);
 
-    std::cout << "t1:hash_code:" << typeid(t1).hash_code() << std::endl;
+    //    std::cout << "t1:hash_code:" << typeid(t1).hash_code() << std::endl;
     std::cout << "t2:hash_code:" << typeid(t2).hash_code() << std::endl;
 
-    std::cout << "t1:name:" << typeid(t1).name() << std::endl;
+    //    std::cout << "t1:name:" << typeid(t1).name() << std::endl;
     std::cout << "t2:name:" << typeid(t2).name() << std::endl;
 
     std::cout << std::is_convertible<simple_thread_pool::task_base_t *, simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t> *>::value << std::endl;
@@ -2807,17 +2807,76 @@ static void test35()
 
     std::cout << "-----" << std::endl;
 
-    simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t> *param_2_ret = dynamic_cast<simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t> *>(t1);
+    //    simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t> *param_2_ret = dynamic_cast<simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t> *>(t1);
     simple_thread_pool::task_t<work_object_memeber_function_t, int, void *> *param_v_ret = dynamic_cast<simple_thread_pool::task_t<work_object_memeber_function_t, int, void *> *>(t2);
 
-    std::cout << "param_2_ret:" << (param_2_ret == nullptr) << std::endl;
+    //    std::cout << "param_2_ret:" << (param_2_ret == nullptr) << std::endl;
     std::cout << "param_v_ret:" << (param_v_ret == nullptr) << std::endl;
 
     std::cout << "-----" << std::endl;
 
     simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t> *param_2_ret2 = dynamic_cast<simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t> *>(t2);
-    simple_thread_pool::task_t<work_object_memeber_function_t, int, void *> *param_v_ret2 = dynamic_cast<simple_thread_pool::task_t<work_object_memeber_function_t, int, void *> *>(t1);
+    //    simple_thread_pool::task_t<work_object_memeber_function_t, int, void *> *param_v_ret2 = dynamic_cast<simple_thread_pool::task_t<work_object_memeber_function_t, int, void *> *>(t1);
 
     std::cout << "param_2_ret:" << (param_2_ret2 == nullptr) << std::endl;
-    std::cout << "param_v_ret:" << (param_v_ret2 == nullptr) << std::endl;
+    //    std::cout << "param_v_ret:" << (param_v_ret2 == nullptr) << std::endl;
+}
+
+static void test_template_callback(int v1, double v2, std::string v3)
+{
+}
+template <class _Fp, class... _Args>
+static void test_template_function(const std::tuple<_Fp, _Args...> &t)
+{
+    typedef typename std::__make_tuple_indices<std::tuple_size<std::tuple<_Fp, _Args...>>::value, 1>::type _Index;
+    std::tuple<_Fp, _Args...> params = t;
+    //    std::function_call<_Fp, _Args..., _Index...>(params, _Index());
+}
+/**
+ * 测试类型
+ */
+static void test36()
+{
+    test_template_function(std::make_tuple(&test_template_callback, 1, 3.14, "haha"));
+}
+
+void test_function4(int a, double b, int *c)
+{
+    std::cout << a << ":" << b << ":" << c << std::endl;
+}
+template <typename Function, typename Tuple, size_t... I>
+static auto test_call_function(Function f, Tuple t, std::index_sequence<I...>)
+{
+    return f(std::get<I>(t)...);
+}
+template <typename Function, typename Tuple>
+static auto test_call_function(Function f, Tuple t)
+{
+    static constexpr auto size = std::tuple_size<Tuple>::value;
+    return test_call_function(f, t, std::make_index_sequence<size>{});
+}
+template <class _Fp, class... _Args, size_t... _Indices>
+static void test_call_function2(_Fp &f, std::index_sequence<_Indices...>, _Args &... g)
+{
+    f(std::get<_Indices>(g)...);
+}
+template <class _Fp, class _Args, size_t... _Indices>
+static void test_call_function3(_Fp &&f, _Args &&t, std::index_sequence<_Indices...>)
+{
+    f(std::get<_Indices>(t)...);
+}
+static void test37()
+{
+    int a = 8;
+    std::tuple<int, double, int *> t = std::make_tuple(1, 3.14, &a);
+    //or std::array<int, 3> t;
+    //or std::pair<int, double> t;
+    test_call_function(&test_function4, t);
+    
+    // test_call_function2(&test_function4, std::make_index_sequence<3>{}, 1, 3.14, (void *)&a);
+    auto ss = std::make_index_sequence<std::tuple_size<std::tuple<int, double, int *>>::value>();
+    auto ss2 = std::make_index_sequence<std::tuple_size<std::tuple<int, double, int *>>::value>{};
+    // test_call_function3(&test_function4, t, ss2);
+    test_call_function(&test_function4, t, ss2);
+    test_call_function3(&test_function4, t, ss2);
 }
