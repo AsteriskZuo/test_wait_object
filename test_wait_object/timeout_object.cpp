@@ -13,6 +13,7 @@
 #include <iomanip>
 #include <sstream>
 #include <random>
+#include <stdexcept>
 
 std::mutex s_mutex;
 
@@ -47,6 +48,7 @@ static void test31();
 static void test32();
 static void test33();
 static void test34();
+static void test35();
 void test_timeout_object_function()
 {
     test29();
@@ -1095,7 +1097,7 @@ void simple_thread_pool::uninstance()
 }
 
 simple_thread_pool::simple_thread_pool(/* args */)
-    : _is_init(false), _task_strategy(task_strategy_cancel_all_task), _task_notify(nullptr)
+    : _thread_count(5), _is_init(false), _task_notify(nullptr), _task_strategy(task_strategy_cancel_all_task), _task_queue_strategy(task_queue_strategy_fix_param)
 {
 }
 
@@ -1108,11 +1110,27 @@ void simple_thread_pool::init(const int thread_count)
 {
     if (!_is_init.exchange(true))
     {
-        _task_queue = new task_queue_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t>(this);
+        _thread_count = thread_count;
+        _task_queue_strategy = task_queue_strategy_fix_param;
+        _task_queue = new task_queue_t<task_func_t, task_param_t>(this);
         assert(_task_queue);
         _thread_queue = new thread_queue_t(_task_queue);
         assert(_thread_queue);
-        _thread_queue->start(thread_count);
+        _thread_queue->start<task_func_t, task_param_t>(_thread_count);
+    }
+}
+template <class _Fp, class... _Args>
+void simple_thread_pool::initv(const int thread_count)
+{
+    if (!_is_init.exchange(true))
+    {
+        _thread_count = thread_count;
+        _task_queue_strategy = task_queue_strategy_variable_param;
+        _task_queue = new task_queue_t<_Fp, _Args...>(this);
+        assert(_task_queue);
+        _thread_queue = new thread_queue_t(_task_queue);
+        assert(_thread_queue);
+        _thread_queue->start<_Fp, _Args...>(_thread_count);
     }
 }
 void simple_thread_pool::uninit()
@@ -1134,17 +1152,45 @@ void simple_thread_pool::uninit()
             delete _task_queue;
         }
         _task_queue = nullptr;
+        std::cout << __FUNCTION__ << ":" << __LINE__
+                  << ":t=" << test_current_time()
+                  << ":els=" << test_get_time_difference()
+                  << ":tid=" << std::this_thread::get_id()
+                  << std::endl;
     }
-    std::cout << __FUNCTION__ << ":" << __LINE__
-              << ":t=" << test_current_time()
-              << ":els=" << test_get_time_difference()
-              << ":tid=" << std::this_thread::get_id()
-              << std::endl;
 }
 void simple_thread_pool::post(task_func_t func, task_param_t param, int priority /*= 0*/)
 {
-    task_queue_t<task_func_t, task_param_t> *q = static_cast<task_queue_t<task_func_t, task_param_t> *>(_task_queue);
-    task_base_t *task = q->create_task(func, param, priority);
+    if (task_queue_strategy_fix_param == _task_queue_strategy)
+    {
+        task_queue_t<task_func_t, task_param_t> *q = dynamic_cast<task_queue_t<task_func_t, task_param_t> *>(_task_queue);
+        task_base_t *task = q->create_task(func, param, priority);
+        _task_queue->push_back(task);
+    }
+    else
+    {
+        std::stringstream ss;
+        ss << __FUNCTION__ << ":" << __LINE__ << ":error="
+           << "not_support_fix_parameter";
+        throw std::runtime_error(ss.str().c_str());
+    }
+}
+template <class _Fp, class... _Args>
+void simple_thread_pool::postv(int priority, _Fp &&f, _Args &&... args)
+{
+    if (task_queue_strategy_variable_param != _task_queue_strategy)
+    {
+        std::stringstream ss;
+        ss << __FUNCTION__ << ":" << __LINE__ << ":error="
+           << "not_support_variable_parameter";
+        throw std::runtime_error(ss.str().c_str());
+    }
+
+    // static_assert(!std::is_same<_Fp, void(*)(void*)>::value, "please use post method.");
+    static_assert(!std::is_same<typename std::decay<_Fp>::type, void (*)(void *)>::value, "please use post method.");
+
+    task_queue_t<_Fp, _Args...> *q = dynamic_cast<task_queue_t<_Fp, _Args...> *>(_task_queue);
+    task_base_t *task = q->create_task(priority, std::move(f), std::move(args)...);
     _task_queue->push_back(task);
 }
 void simple_thread_pool::set_notify(task_notify_interface *notify)
@@ -1160,6 +1206,7 @@ simple_thread_pool::thread_queue_t::~thread_queue_t()
 {
     stop();
 }
+template <class _Fp, class... _Args>
 void simple_thread_pool::thread_queue_t::start(const int max)
 {
     if (!_is_started.exchange(true))
@@ -1167,7 +1214,7 @@ void simple_thread_pool::thread_queue_t::start(const int max)
         for (size_t i = 0; i < max; i++)
         {
             thread_run_t *r = new thread_run_t(_q);
-            thread_t *t = new thread_t(&thread_run_t::run, r);
+            thread_t *t = new thread_t(&thread_run_t::run<_Fp, _Args...>, r);
             _ls.push_back(std::make_pair(t, r));
         }
     }
@@ -1193,6 +1240,7 @@ simple_thread_pool::thread_t::~thread_t()
 {
 }
 
+template <class _Fp, class... _Args>
 void simple_thread_pool::thread_run_t::run()
 {
     for (;;)
@@ -1203,18 +1251,39 @@ void simple_thread_pool::thread_run_t::run()
             {
             case task_strategy_join_all_task:
             {
-                auto ts = std::move(_q->get_task_list());
+                auto &&ts = _q->get_task_list();
                 for (auto iter = ts.begin(); iter != ts.end(); ++iter)
                 {
                     task_base_t *task = *iter;
-                    task_t<task_func_t, task_param_t> *t = nullptr;
-                    if (static_cast<void>(t = static_cast<task_t<task_func_t, task_param_t> *>(task)), nullptr != t)
+                    task_t<task_func_t, task_param_t> *t1 = nullptr;
+                    task_t<_Fp, _Args...> *t2 = nullptr;
+                    if (static_cast<void>(t1 = dynamic_cast<task_t<task_func_t, task_param_t> *>(task)), nullptr != t1)
                     {
-                        if (t && t->func)
+                        if (t1 && t1->func)
                         {
-                            (t->func)(t->param);
+                            (t1->func)(t1->param);
                             _q->destory_task(&task);
                         }
+                    }
+                    else if (static_cast<void>(t2 = dynamic_cast<task_t<_Fp, _Args...> *>(task)), nullptr != t2)
+                    {
+                        //ref: https://stackoverflow.com/questions/7858817/unpacking-a-tuple-to-call-a-matching-function-pointer
+                        if (t2)
+                        {
+                            std::tuple<_Fp, _Args...> ttt;
+                            // std::tuple<typename std::decay<_Fp>::type, typename std::decay<_Args>::type...> params;
+                            typedef typename std::__make_tuple_indices<std::tuple_size<std::tuple<_Fp, _Args...>>::value, 0>::type _Index;
+                            // std::__invoke(std::move(std::get<_Index>(ttt))...);
+                            // std::__thread_execute(t2->params, _Index());
+                            _q->destory_task(&task);
+                        }
+                    }
+                    else
+                    {
+                        std::stringstream ss;
+                        ss << __FUNCTION__ << ":" << __LINE__ << ":err="
+                           << "not_parse_param";
+                        throw std::logic_error(ss.str().c_str());
                     }
                 }
             }
@@ -1235,7 +1304,7 @@ void simple_thread_pool::thread_run_t::run()
 
         task_base_t *task = _q->front_pop();
         task_t<task_func_t, task_param_t> *t = nullptr;
-        if (static_cast<void>(t = static_cast<task_t<task_func_t, task_param_t> *>(task)), nullptr != t)
+        if (static_cast<void>(t = dynamic_cast<task_t<task_func_t, task_param_t> *>(task)), nullptr != t)
         {
             if (t && t->func)
             {
@@ -2321,7 +2390,9 @@ static void test28()
 class work_object
 {
 private:
-    /* data */
+    static std::random_device rd;
+    static std::uniform_int_distribution<int> dist;
+
 public:
     work_object(/* args */);
     ~work_object();
@@ -2335,6 +2406,7 @@ public:
     }
     static void work2(void *)
     {
+        std::this_thread::sleep_for(std::chrono::milliseconds(dist(rd)));
         std::lock_guard<std::mutex> lock(s_mutex);
         std::cout << __FUNCTION__ << ":" << __LINE__
                   << ":t=" << test_current_time()
@@ -2342,7 +2414,32 @@ public:
                   << ":tid=" << std::this_thread::get_id()
                   << std::endl;
     }
+    static void work3(int i, void *)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(dist(rd)));
+        std::lock_guard<std::mutex> lock(s_mutex);
+        std::cout << __FUNCTION__ << ":" << __LINE__
+                  << ":t=" << test_current_time()
+                  << ":els=" << test_get_time_difference()
+                  << ":tid=" << std::this_thread::get_id()
+                  << "i=" << i
+                  << std::endl;
+    }
+    static void work4(int i, int j, void *)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(dist(rd)));
+        std::lock_guard<std::mutex> lock(s_mutex);
+        std::cout << __FUNCTION__ << ":" << __LINE__
+                  << ":t=" << test_current_time()
+                  << ":els=" << test_get_time_difference()
+                  << ":tid=" << std::this_thread::get_id()
+                  << "i=" << i
+                  << std::endl;
+    }
 };
+
+std::random_device work_object::rd;
+std::uniform_int_distribution<int> work_object::dist(1, 1000);
 
 work_object::work_object(/* args */)
 {
@@ -2352,14 +2449,44 @@ work_object::~work_object()
 {
 }
 
+typedef void (*work_object_memeber_function_t)(int, void *);
+typedef void (*work_object_memeber_function3_t)(int, int, void *);
+typedef void (*work_object_memeber_function2_t)(void *);
 static void test_add_thread_pool_task()
 {
-    int count = 1000;
+    int count = 1;
     work_object *wobjs[count];
     for (size_t i = 0; i < count; i++)
     {
-        // work_object *wobj = new work_object();
-        simple_thread_pool::instance()->post(&work_object::work2, nullptr);
+        if (simple_thread_pool::task_queue_strategy_t::task_queue_strategy_fix_param == simple_thread_pool::instance()->get_parameter_strategy())
+        {
+            simple_thread_pool::instance()->post(&work_object::work2, nullptr);
+        }
+        else if (simple_thread_pool::task_queue_strategy_t::task_queue_strategy_variable_param == simple_thread_pool::instance()->get_parameter_strategy())
+        {
+            simple_thread_pool::instance()->postv<work_object_memeber_function_t, int, void *>(0, &work_object::work3, i, nullptr);
+            // simple_thread_pool::instance()->postv<work_object_memeber_function3_t, int, int, void *>(0, &work_object::work4, i, 2*i, nullptr);//参数不一致 warning
+        }
+    }
+    for (size_t i = 0; i < count; i++)
+    {
+    }
+}
+static void test_add_thread_pool_task2()
+{
+    int count = 1;
+    work_object *wobjs[count];
+    for (size_t i = 0; i < count; i++)
+    {
+        if (simple_thread_pool::task_queue_strategy_t::task_queue_strategy_fix_param == simple_thread_pool::instance()->get_parameter_strategy())
+        {
+            simple_thread_pool::instance()->post(&work_object::work2, nullptr);
+        }
+        else if (simple_thread_pool::task_queue_strategy_t::task_queue_strategy_variable_param == simple_thread_pool::instance()->get_parameter_strategy())
+        {
+            // simple_thread_pool::instance()->postv<work_object_memeber_function2_t, void *>(0, &work_object::work2, nullptr);//compile error
+            // simple_thread_pool::instance()->postv<simple_thread_pool::task_func_t, void *>(0, &work_object::work2, nullptr);//compile error
+        }
     }
     for (size_t i = 0; i < count; i++)
     {
@@ -2374,13 +2501,34 @@ static void test_thread_pool_1()
     simple_thread_pool::instance()->uninit();
     simple_thread_pool::uninstance();
 }
+static void test_thread_pool_2()
+{
+    simple_thread_pool::instance()->initv<work_object_memeber_function_t, int, void *>(5);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    test_add_thread_pool_task();
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+    simple_thread_pool::instance()->uninit();
+    simple_thread_pool::uninstance();
+}
+static void test_thread_pool_3()
+{
+    /**
+     * 测试静态模板编译错误判断
+     */
+    simple_thread_pool::instance()->initv<work_object_memeber_function2_t, void *>(5);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    test_add_thread_pool_task2();
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+    simple_thread_pool::instance()->uninit();
+    simple_thread_pool::uninstance();
+}
 /**
  * 简单测试线程池
  */
 static void test29()
 {
     s_last = test_get_current_time();
-    test_thread_pool_1();
+    test_thread_pool_2();
 }
 
 class test_condition_mutex
@@ -2587,4 +2735,89 @@ static void test_map()
 static void test34()
 {
     test_map();
+}
+
+class BaseClass
+{
+public:
+    virtual void printf() {}
+};
+class DerivedClass : public BaseClass
+{
+public:
+    void printf() override {}
+};
+
+class A
+{
+};
+class B : public A
+{
+};
+class C
+{
+};
+class D
+{
+public:
+    operator C()
+    {
+        return c;
+    }
+    C c;
+};
+/**
+ * 测试类型是否相同
+ */
+static void test35()
+{
+    std::cout << std::boolalpha;
+    std::cout << std::is_same<simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t>, simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t>>::value << std::endl;
+    std::cout << std::is_same<simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t>, simple_thread_pool::task_t<work_object_memeber_function_t, int, void *>>::value << std::endl;
+
+    std::cout << "1:hash_code:" << typeid(simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t>).hash_code() << std::endl;
+    std::cout << "2:hash_code:" << typeid(simple_thread_pool::task_t<work_object_memeber_function_t, int, void *>).hash_code() << std::endl;
+
+    simple_thread_pool::task_base_t *t1 = new simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t>(&work_object::work2, nullptr);
+    simple_thread_pool::task_base_t *t2 = new simple_thread_pool::task_t<work_object_memeber_function_t, int, void *>(0, &work_object::work3, 2, nullptr);
+
+    std::cout << "t1:hash_code:" << typeid(t1).hash_code() << std::endl;
+    std::cout << "t2:hash_code:" << typeid(t2).hash_code() << std::endl;
+
+    std::cout << "t1:name:" << typeid(t1).name() << std::endl;
+    std::cout << "t2:name:" << typeid(t2).name() << std::endl;
+
+    std::cout << std::is_convertible<simple_thread_pool::task_base_t *, simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t> *>::value << std::endl;
+    std::cout << std::is_convertible<simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t> *, simple_thread_pool::task_base_t *>::value << std::endl;
+
+    std::cout << "-----" << std::endl;
+
+    std::cout << std::is_convertible<simple_thread_pool::task_t<work_object_memeber_function_t, int, void *> *, simple_thread_pool::task_base_t *>::value << std::endl;
+    std::cout << std::is_convertible<simple_thread_pool::task_base_t *, simple_thread_pool::task_t<work_object_memeber_function_t, int, void *> *>::value << std::endl;
+
+    std::cout << "-----" << std::endl;
+
+    std::cout << std::is_convertible<BaseClass, DerivedClass>::value << std::endl;
+    std::cout << std::is_convertible<BaseClass *, DerivedClass *>::value << std::endl;
+    std::cout << std::is_convertible<DerivedClass *, BaseClass *>::value << std::endl;
+
+    D d;
+    d.operator C();
+    C c = D();
+
+    std::cout << "-----" << std::endl;
+
+    simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t> *param_2_ret = dynamic_cast<simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t> *>(t1);
+    simple_thread_pool::task_t<work_object_memeber_function_t, int, void *> *param_v_ret = dynamic_cast<simple_thread_pool::task_t<work_object_memeber_function_t, int, void *> *>(t2);
+
+    std::cout << "param_2_ret:" << (param_2_ret == nullptr) << std::endl;
+    std::cout << "param_v_ret:" << (param_v_ret == nullptr) << std::endl;
+
+    std::cout << "-----" << std::endl;
+
+    simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t> *param_2_ret2 = dynamic_cast<simple_thread_pool::task_t<simple_thread_pool::task_func_t, simple_thread_pool::task_param_t> *>(t2);
+    simple_thread_pool::task_t<work_object_memeber_function_t, int, void *> *param_v_ret2 = dynamic_cast<simple_thread_pool::task_t<work_object_memeber_function_t, int, void *> *>(t1);
+
+    std::cout << "param_2_ret:" << (param_2_ret2 == nullptr) << std::endl;
+    std::cout << "param_v_ret:" << (param_v_ret2 == nullptr) << std::endl;
 }

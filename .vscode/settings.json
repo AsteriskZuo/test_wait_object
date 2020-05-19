@@ -70,6 +70,7 @@
         "__functional_base_03": "cpp",
         "memory_resource": "cpp",
         "__tree": "cpp",
-        "map": "cpp"
+        "map": "cpp",
+        "__memory": "cpp"
     }
 }

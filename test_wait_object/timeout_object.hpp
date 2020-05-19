@@ -19,6 +19,7 @@
 #include <type_traits>
 #include <map>
 #include <iostream>
+#include <typeinfo>
 
 class toop;
 
@@ -475,6 +476,7 @@ public:
                 id = _s_id.exchange(0);
         }
         virtual ~task_base_t() {}
+        virtual const std::type_info &get_really_type() = 0;
     };
 
     template <class _Fp, class... _Args>
@@ -482,9 +484,14 @@ public:
     {
         std::tuple<typename std::decay<_Fp>::type, typename std::decay<_Args>::type...> params;
 
+        // explicit task_t() noexcept {}
         explicit task_t(const int priority, _Fp &&f, _Args &&... args) noexcept
-            : task_base_t(priority), params(std::decay_copy(std::forward(f)), std::decay_copy(std::forward(args))...)
+            : task_base_t(priority), params(std::move(f), std::move(args)...)
         {
+        }
+        const std::type_info &get_really_type() override
+        {
+            return typeid(*this);
         }
     };
     template <>
@@ -496,6 +503,10 @@ public:
         explicit task_t(const task_func_t &f, const task_param_t &p, const int priority = 0) noexcept
             : task_base_t(priority), func(f), param(p)
         {
+        }
+        const std::type_info &get_really_type() override
+        {
+            return typeid(*this);
         }
     };
 
@@ -513,9 +524,9 @@ public:
         virtual void clear() = 0;
         virtual std::list<task_base_t *> get_task_list() = 0;
         virtual void quit() = 0;
-        template <class _Fp, class... _Args>
-        task_base_t *create_task(int priority, _Fp &&f, _Args &&... args) { return nullptr; }
-        task_base_t *create_task(const task_func_t &func, const task_param_t &param, int priority = 0) { return nullptr; }
+        //        template <class _Fp, class... _Args>
+        //        task_base_t *create_task(int priority, _Fp &&f, _Args &&... args) { return nullptr; }
+        //        task_base_t *create_task(const task_func_t &func, const task_param_t &param, int priority = 0) { return nullptr; }
         virtual void destory_task(task_base_t **task) = 0;
     };
 
@@ -529,6 +540,8 @@ public:
         task_queue_base_t *_q;
         thread_run_t(task_queue_base_t *q) : _q(q) {}
         virtual ~thread_run_t() {}
+
+        template <class _Fp, class... _Args>
         void run();
     };
 
@@ -540,6 +553,8 @@ public:
 
         explicit thread_queue_t(task_queue_base_t *q) noexcept;
         ~thread_queue_t();
+
+        template <class _Fp, class... _Args>
         void start(const int max);
         void stop();
     };
@@ -550,17 +565,18 @@ public:
         std::map<std::pair<int, int>, task_t<_Fp, _Args...> *> _tasks;
 
         explicit task_queue_t(simple_thread_pool *tp) noexcept : task_queue_base_t(tp) {}
-        ~task_queue_t() {}
+        ~task_queue_t() { clear(); }
 
-        void push_back(task_t<_Fp, _Args...> *task) override
+        void push_back(task_base_t *task) override
         {
             {
                 std::lock_guard<std::mutex> lock(_mutex);
-                _tasks.insert(std::make_pair(std::make_pair(task->pri, task->id), task));
+                task_t<_Fp, _Args...> *t = dynamic_cast<task_t<_Fp, _Args...> *>(task);
+                _tasks.insert(std::make_pair(std::make_pair(t->pri, t->id), t));
             }
             _variable.notify_one();
         }
-        task_t<_Fp, _Args...> *front_pop() override
+        task_base_t *front_pop() override
         {
             {
                 std::unique_lock<std::mutex> lock(_mutex);
@@ -568,7 +584,7 @@ public:
                     return _quit.load() || 0 != _tasks.size();
                 });
             }
-            task_t<_Fp, _Args...> ret;
+            task_base_t *ret = nullptr;
             {
                 std::lock_guard<std::mutex> lock(_mutex);
                 if (_tasks.size() && !_quit.load())
@@ -587,6 +603,7 @@ public:
                 task_t<_Fp, _Args...> *t = iter->second;
                 delete t;
             }
+            _tasks.clear();
         }
         std::list<task_base_t *> get_task_list() override
         {
@@ -610,15 +627,15 @@ public:
             _variable.notify_all();
         }
 
-        task_t<_Fp, _Args...> *create_task(int priority, _Fp &&f, _Args &&... args)
+        task_base_t *create_task(int priority, _Fp &&f, _Args &&... args)
         {
             std::lock_guard<std::mutex> lock(_mutex);
-            task_t<_Fp, _Args...> *task = new task_t<_Fp, _Args...>(priority, std::forward(f), std::forward(args)...);
+            task_t<_Fp, _Args...> *task = new task_t<_Fp, _Args...>(priority, std::move(f), std::move(args)...);
             assert(task);
             _tasks.insert(std::make_pair(std::make_pair(task->pri, task->id), task));
             return task;
         }
-        void destory_task(task_t<_Fp, _Args...> **task) override
+        void destory_task(task_base_t **task) override
         {
             std::lock_guard<std::mutex> lock(_mutex);
             if (task && *task)
@@ -646,7 +663,7 @@ public:
         {
             {
                 std::lock_guard<std::mutex> lock(_mutex);
-                task_t<task_func_t, task_param_t> *t = static_cast<task_t<task_func_t, task_param_t> *>(task);
+                task_t<task_func_t, task_param_t> *t = dynamic_cast<task_t<task_func_t, task_param_t> *>(task);
                 _tasks.insert(std::make_pair(std::make_pair(t->pri, t->id), t));
                 {
                     std::lock_guard<std::mutex> lock(s_mutex);
@@ -730,7 +747,7 @@ public:
             std::lock_guard<std::mutex> lock(_mutex);
             if (task && *task)
             {
-                task_t<task_func_t, task_param_t> *t = static_cast<task_t<task_func_t, task_param_t> *>(*task);
+                task_t<task_func_t, task_param_t> *t = dynamic_cast<task_t<task_func_t, task_param_t> *>(*task);
                 auto iter = _tasks.find(std::make_pair(t->pri, t->id));
                 if (iter != _tasks.end())
                 {
@@ -748,6 +765,12 @@ public:
         task_strategy_cancel_all_task,
     };
 
+    enum task_queue_strategy_t
+    {
+        task_queue_strategy_fix_param,
+        task_queue_strategy_variable_param
+    };
+
     /**
      * 通知任务运行状态
      */
@@ -761,8 +784,10 @@ public:
 private:
     task_queue_base_t *_task_queue;
     thread_queue_t *_thread_queue;
-    task_strategy_t _task_strategy;
     task_notify_interface *_task_notify;
+    task_strategy_t _task_strategy;
+    task_queue_strategy_t _task_queue_strategy;
+    int _thread_count;
 
 public:
 public:
@@ -772,38 +797,83 @@ public:
     static simple_thread_pool *instance();
     static void uninstance();
 
+    /**
+     * 初始化
+     * 
+     * @param thread_count 并发线程数，建议不要超过处理器的线程数
+     */
     void init(const int thread_count);
+
+    /**
+     * 初始化 变参版本
+     * 注意：模板在编译期决定，所以一旦这里确定了参数类型以及个数，后续postv方法一定要保证一致
+     * 
+     * @param thread_count 并发线程数
+     */
+    template <class _Fp, class... _Args>
+    void initv(const int thread_count);
+
+    /**
+     * 反初始化
+     * 初始化之后，使用完毕必须使用该方法才能正常退出，否则线程无法正常退出
+     */
     void uninit();
 
     /**
      * 异步任务执行
      * priority [-1 - 1] -1 低优先级 0 普通 1 高优先级
+     * 调用init之后，请使用该方法
      * 
-     * @param func 
-     * @param param
+     * @param func 函数体 需要使用者持有
+     * @param param 参数对象 需要使用者持有
      * @param priority 任务优先级
      */
     void post(task_func_t func, task_param_t param, int priority = 0);
 
     /**
-     * 异步任务执行
+     * 异步任务执行 变参版本
      * priority [-1 - 1] -1 低优先级 0 普通 1 高优先级
+     * 调用initv之后，请使用该方法
+     * 注意: 该版本不支持 void(*)(void*)的方法
      * 
-     * @param func 
-     * @param param
+     * @param f 函数体 调用者持有，使用者不需要关心
+     * @param args 变参 调用者持有，使用者不需要关心 
      * @param priority 任务优先级
      */
     template <class _Fp, class... _Args>
-    void post(const int priority, _Fp &&f, _Args &&... args)
-    {
-    }
+    void postv(int priority, _Fp &&f, _Args &&... args);
 
     /**
      * 设置任务通知，默认没有通知
      * 设置通知之后，可以收到任务执行前后等通知
+     * 
      * @param notify 通知对象
      */
     void set_notify(task_notify_interface *notify);
+
+    /**
+     * 获取并发线程数
+     * @return 返回并发线程数
+     */
+    int get_thread_count() { return _thread_count; }
+
+    /**
+     * 获取变参策略
+     * @return 返回变参策略
+     */
+    task_queue_strategy_t get_parameter_strategy() { return _task_queue_strategy; }
+
+    /**
+     * 获取任务策略
+     * @return 返回任务策略
+     */
+    task_strategy_t get_task_strategy() { return _task_strategy; }
+
+    /**
+     * 获取通知监听对象
+     * @return 返回监听对象
+     */
+    task_notify_interface *get_notify_object() { return _task_notify; }
 
 private:
 private:
