@@ -51,9 +51,10 @@ static void test34();
 static void test35();
 static void test36();
 static void test37();
+static void test38();
 void test_timeout_object_function()
 {
-    test37();
+    test38();
 }
 
 timeout_object timeout_object::_s_obj;
@@ -2867,16 +2868,156 @@ static void test_call_function3(_Fp &&f, _Args &&t, std::index_sequence<_Indices
 }
 static void test37()
 {
+    // ref: https://cpluspluspedia.com/en/tutorial/8315/std-integer-sequence
+    // ref: https://stackoverflow.com/questions/7858817/unpacking-a-tuple-to-call-a-matching-function-pointer
     int a = 8;
     std::tuple<int, double, int *> t = std::make_tuple(1, 3.14, &a);
     //or std::array<int, 3> t;
     //or std::pair<int, double> t;
     test_call_function(&test_function4, t);
-    
+
     // test_call_function2(&test_function4, std::make_index_sequence<3>{}, 1, 3.14, (void *)&a);
     auto ss = std::make_index_sequence<std::tuple_size<std::tuple<int, double, int *>>::value>();
     auto ss2 = std::make_index_sequence<std::tuple_size<std::tuple<int, double, int *>>::value>{};
     // test_call_function3(&test_function4, t, ss2);
     test_call_function(&test_function4, t, ss2);
     test_call_function3(&test_function4, t, ss2);
+}
+
+template <typename T, T... ints>
+static void print_sequence(std::integer_sequence<T, ints...> int_seq)
+{
+    // ref: https://en.cppreference.com/w/cpp/utility/integer_sequence
+    // c++ 17 above
+    std::cout << "The sequence of size " << int_seq.size() << ": ";
+    //    ((std::cout << ints << ' '),...);
+    //    std::cout << ints[0] << std::endl;
+    for (int i = 0; i < int_seq.size(); ++i)
+    {
+        //        std::cout << int_seq[i] << ' ';
+    }
+    std::cout << '\n';
+    std::integer_sequence<size_t, 1, 2, 4, 8> seq;
+    //    std::cout << seq[0] << std::endl;
+    //    for (auto i: seq) {
+    //        std::cout << i << std::endl;
+    //    }
+    int int_array[] = {ints...};
+    for (auto i : int_array)
+    {
+        std::cout << i << std::endl;
+    }
+}
+
+template <size_t... ints>
+static void print_sequence2(std::__tuple_indices<ints...> int_seq)
+{
+    // ref: https://en.cppreference.com/w/cpp/utility/integer_sequence
+    // c++ 17 above
+    std::cout << "The sequence of size x: ";
+    int int_array[] = {(ints)...};
+    for (auto i : int_array)
+    {
+        std::cout << i << std::endl;
+    }
+    std::cout << "The sequence of size x2: ";
+    int int_array2[] = {(ints + 1)...};
+    for (auto i : int_array2)
+    {
+        std::cout << i << std::endl;
+    }
+}
+
+template <class _TSp, class _Fp, class... _Args, size_t... _Indices>
+static void my_thread_execute(std::tuple<_TSp, _Fp, _Args...> &__t, std::__tuple_indices<_Indices...>)
+{
+    std::__invoke(std::move(std::get<1>(__t)), std::move(std::get<_Indices>(__t))...);
+}
+
+template <class _Fp>
+static void *my_thread_proxy(void *__vp)
+{
+    // _Fp = std::tuple< unique_ptr<__thread_struct>, Functor, Args...>
+    std::unique_ptr<_Fp> __p(static_cast<_Fp *>(__vp));
+    std::__thread_local_data().set_pointer(std::get<0>(*__p).release());
+    typedef typename std::__make_tuple_indices<std::tuple_size<_Fp>::value, 2>::type _Index;
+    my_thread_execute(*__p, _Index());
+    return nullptr;
+}
+
+template <class _Fp, class... _Args>
+static void my_call_function(_Fp &&__f, _Args &&... __args)
+{
+    /**
+     * from thread modal
+     */
+    typedef std::unique_ptr<std::__thread_struct> _TSPtr;
+    _TSPtr __tsp(new std::__thread_struct);
+    typedef std::tuple<_TSPtr, typename std::decay<_Fp>::type, typename std::decay<_Args>::type...> _Gp;
+    std::unique_ptr<_Gp> __p(
+        new _Gp(std::move(__tsp),
+                std::decay_copy(std::forward<_Fp>(__f)),
+                std::decay_copy(std::forward<_Args>(__args))...));
+    my_thread_proxy<_Gp>(__p.get());
+    // int __ec = __libcpp_thread_create(&__t_, &__thread_proxy<_Gp>, __p.get());
+    // if (__ec == 0)
+    __p.release();
+    // else
+    //     __throw_system_error(__ec, "thread constructor failed");
+}
+
+template <class _Fp, class... _Args, size_t... _Indices>
+static void my_thread_execute2(std::tuple<_Fp, _Args...> &__t, std::__tuple_indices<_Indices...>)
+{
+    std::__invoke(std::move(std::get<0>(__t)), std::move(std::get<_Indices>(__t))...);
+}
+template <class _Fp>
+static void *my_thread_proxy2(void *__vp)
+{
+    // _Fp = std::tuple< unique_ptr<__thread_struct>, Functor, Args...>
+    std::unique_ptr<_Fp> __p(static_cast<_Fp *>(__vp));
+    typedef typename std::__make_tuple_indices<std::tuple_size<_Fp>::value, 1>::type _Index;
+    my_thread_execute2(*__p, _Index());
+    return nullptr;
+}
+template <class _Fp, class... _Args>
+static void my_call_function2(_Fp &&__f, _Args &&... __args)
+{
+    typedef std::tuple<typename std::decay<_Fp>::type, typename std::decay<_Args>::type...> _Gp;
+    std::unique_ptr<_Gp> __p(new _Gp(std::decay_copy(std::forward<_Fp>(__f)), std::decay_copy(std::forward<_Args>(__args))...));
+    my_thread_proxy2<_Gp>(__p.get());
+    __p.release();
+}
+
+template <class _Fp, class... _Args, size_t... _Indices>
+static void my_thread_execute3(std::tuple<_Fp, _Args...> &__t, std::__tuple_indices<_Indices...>)
+{
+    std::move(std::get<0>(__t))(std::move(std::get<_Indices>(__t))...);
+}
+template <class _Fp>
+static void *my_thread_proxy3(_Fp &&__v)
+{
+    typedef typename std::__make_tuple_indices<std::tuple_size<_Fp>::value, 1>::type _Index;
+    auto ret = std::make_index_sequence<std::tuple_size<_Fp>::value>();
+    print_sequence(ret);
+    print_sequence2(_Index());
+    my_thread_execute3(__v, _Index());
+    print_sequence(std::index_sequence_for<float, std::iostream, char, std::string, void *, long long int>{});
+    return nullptr;
+}
+template <class _Fp, class... _Args>
+static void my_call_function3(_Fp &&__f, _Args &&... __args)
+{
+    my_thread_proxy3(std::make_tuple(std::move(__f), std::move(__args)...));
+}
+
+static void test38()
+{
+    /**
+     * 顺藤摸瓜方法
+     */
+    int a = 8;
+    my_call_function(&test_function4, 1, 3.14, &a);
+    my_call_function2(&test_function4, 1, 3.14, &a);
+    my_call_function3(&test_function4, 1, 3.14, &a);
 }
