@@ -1100,7 +1100,7 @@ void simple_thread_pool::uninstance()
 }
 
 simple_thread_pool::simple_thread_pool(/* args */)
-    : _thread_count(5), _is_init(false), _task_notify(nullptr), _task_strategy(task_strategy_cancel_all_task), _task_queue_strategy(task_queue_strategy_fix_param)
+    : _thread_count(5), _is_init(false), _task_notify(nullptr), _task_strategy(task_strategy_join_all_task), _task_queue_strategy(task_queue_strategy_fix_param)
 {
 }
 
@@ -1113,13 +1113,7 @@ void simple_thread_pool::init(const int thread_count)
 {
     if (!_is_init.exchange(true))
     {
-        // _thread_count = thread_count;
-        // _task_queue_strategy = task_queue_strategy_fix_param;
-        // _task_queue = new task_queue_t<task_func_t, task_param_t>(this);
-        // assert(_task_queue);
-        // _thread_queue = new thread_queue_t(_task_queue);
-        // assert(_thread_queue);
-        // _thread_queue->start<task_func_t, task_param_t>(_thread_count);
+        throw std::logic_error("init is deprecated, please initv method.");
     }
 }
 template <class _Fp, class... _Args>
@@ -1164,19 +1158,7 @@ void simple_thread_pool::uninit()
 }
 void simple_thread_pool::post(task_func_t func, task_param_t param, int priority /*= 0*/)
 {
-    // if (task_queue_strategy_fix_param == _task_queue_strategy)
-    // {
-    //     task_queue_t<task_func_t, task_param_t> *q = dynamic_cast<task_queue_t<task_func_t, task_param_t> *>(_task_queue);
-    //     task_base_t *task = q->create_task(func, param, priority);
-    //     _task_queue->push_back(task);
-    // }
-    // else
-    // {
-    //     std::stringstream ss;
-    //     ss << __FUNCTION__ << ":" << __LINE__ << ":error="
-    //        << "not_support_fix_parameter";
-    //     throw std::runtime_error(ss.str().c_str());
-    // }
+    throw std::logic_error("post is deprecated, please postv method.");
 }
 template <class _Fp, class... _Args>
 void simple_thread_pool::postv(int priority, _Fp &&f, _Args &&... args)
@@ -1190,10 +1172,15 @@ void simple_thread_pool::postv(int priority, _Fp &&f, _Args &&... args)
     }
 
     // static_assert(!std::is_same<_Fp, void(*)(void*)>::value, "please use post method.");
-    static_assert(!std::is_same<typename std::decay<_Fp>::type, void (*)(void *)>::value, "please use post method.");
+    // static_assert(!std::is_same<typename std::decay<_Fp>::type, void (*)(void *)>::value, "please use post method.");
 
     task_queue_t<_Fp, _Args...> *q = dynamic_cast<task_queue_t<_Fp, _Args...> *>(_task_queue);
+    if (!q)
+    {
+        throw std::logic_error("No initialization, or template parameters do not match.");
+    }
     task_base_t *task = q->create_task(priority, std::move(f), std::move(args)...);
+    // task_base_t *task = q->create_task_ref(priority, std::decay_copy(std::forward(f)), std::decay_copy(std::forward(args))...);
     _task_queue->push_back(task);
 }
 void simple_thread_pool::set_notify(task_notify_interface *notify)
@@ -1258,31 +1245,16 @@ void simple_thread_pool::thread_run_t::run()
                 for (auto iter = ts.begin(); iter != ts.end(); ++iter)
                 {
                     task_base_t *task = *iter;
-                    // task_t<task_func_t, task_param_t> *t1 = nullptr;
-                    task_t<_Fp, _Args...> *t2 = nullptr;
-                    // if (static_cast<void>(t1 = dynamic_cast<task_t<task_func_t, task_param_t> *>(task)), nullptr != t1)
-                    // {
-                    //     if (t1 && t1->func)
-                    //     {
-                    //         (t1->func)(t1->param);
-                    //         _q->destory_task(&task);
-                    //     }
-                    // }
-                    if (static_cast<void>(t2 = dynamic_cast<task_t<_Fp, _Args...> *>(task)), nullptr != t2)
-                    {
-                        if (t2)
-                        {
-                            std::_invoke_v2(std::move(t2->params));
-                            _q->destory_task(&task);
-                        }
-                    }
-                    else
+                    task_t<_Fp, _Args...> *t = nullptr;
+                    if (static_cast<void>(t = dynamic_cast<task_t<_Fp, _Args...> *>(task)), nullptr == t)
                     {
                         std::stringstream ss;
                         ss << __FUNCTION__ << ":" << __LINE__ << ":err="
                            << "not_parse_param";
                         throw std::logic_error(ss.str().c_str());
                     }
+                    std::_invoke_v2(std::move(t->params));
+                    _q->destory_task(&task);
                 }
             }
             break;
@@ -1301,41 +1273,22 @@ void simple_thread_pool::thread_run_t::run()
         }
 
         task_base_t *task = _q->front_pop();
-        task_t<_Fp, _Args...> *t2 = nullptr;
-        // task_t<task_func_t, task_param_t> *t = nullptr;
-        // if (static_cast<void>(t = dynamic_cast<task_t<task_func_t, task_param_t> *>(task)), nullptr != t)
-        // {
-        //     if (t && t->func)
-        //     {
-        //         if (_q->_tp->_task_notify)
-        //         {
-        //             _q->_tp->_task_notify->task_run_before();
-        //         }
-
-        //         (t->func)(t->param);
-
-        //         if (_q->_tp->_task_notify)
-        //         {
-        //             _q->_tp->_task_notify->task_run_after();
-        //         }
-
-        //         _q->destory_task(&task);
-        //     }
-        // }
-        if (static_cast<void>(t2 = dynamic_cast<task_t<_Fp, _Args...> *>(task)), nullptr != t2)
+        if (task)
         {
-            if (t2)
+            task_t<_Fp, _Args...> *t = nullptr;
+            if (static_cast<void>(t = dynamic_cast<task_t<_Fp, _Args...> *>(task)), nullptr == t)
             {
-                 std::_invoke_v2(std::move(t2->params));
-                _q->destory_task(&task);
+                std::stringstream ss;
+                ss << __FUNCTION__ << ":" << __LINE__ << ":err="
+                   << "not_parse_param";
+                throw std::logic_error(ss.str().c_str());
             }
-        }
-        else
-        {
-            std::stringstream ss;
-            ss << __FUNCTION__ << ":" << __LINE__ << ":err="
-               << "not_parse_param";
-            throw std::logic_error(ss.str().c_str());
+            if (_q->_tp->_task_notify)
+                _q->_tp->_task_notify->task_run_before();
+            std::_invoke_v2(std::move(t->params));
+            if (_q->_tp->_task_notify)
+                _q->_tp->_task_notify->task_run_after();
+            _q->destory_task(&task);
         }
     }
 }
@@ -2468,7 +2421,7 @@ typedef void (*work_object_memeber_function3_t)(int, int, void *);
 typedef void (*work_object_memeber_function2_t)(void *);
 static void test_add_thread_pool_task()
 {
-    int count = 10;
+    int count = 100;
     work_object *wobjs[count];
     for (size_t i = 0; i < count; i++)
     {
@@ -2500,6 +2453,8 @@ static void test_add_thread_pool_task2()
         {
             // simple_thread_pool::instance()->postv<work_object_memeber_function2_t, void *>(0, &work_object::work2, nullptr);//compile error
             // simple_thread_pool::instance()->postv<simple_thread_pool::task_func_t, void *>(0, &work_object::work2, nullptr);//compile error
+            // simple_thread_pool::instance()->postv<work_object_memeber_function2_t, void *>(0, &work_object::work2, nullptr);
+            simple_thread_pool::instance()->postv<work_object_memeber_function_t, int, void *>(0, &work_object::work3, i, nullptr);
         }
     }
     for (size_t i = 0; i < count; i++)

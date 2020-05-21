@@ -510,7 +510,7 @@ public:
     struct task_t : public task_base_t
     {
         std::tuple<typename std::decay<_Fp>::type, typename std::decay<_Args>::type...> params;
-        // std::tuple<_Fp, _Args...> params;
+        // std::tuple<_Fp, _Args...> params;// 可能包含引用类型
 
         // explicit task_t() noexcept {}
         explicit task_t(const int priority, _Fp &&f, _Args &&... args) noexcept
@@ -522,21 +522,6 @@ public:
             return typeid(*this);
         }
     };
-    // template <>
-    // struct task_t<task_func_t, task_param_t> : public task_base_t
-    // {
-    //     task_func_t func;
-    //     task_param_t param;
-    //
-    //     explicit task_t(const task_func_t &f, const task_param_t &p, const int priority = 0) noexcept
-    //         : task_base_t(priority), func(f), param(p)
-    //     {
-    //     }
-    //     const std::type_info &get_really_type() override
-    //     {
-    //         return typeid(*this);
-    //     }
-    // };
 
     struct task_queue_base_t
     {
@@ -552,9 +537,6 @@ public:
         virtual void clear() = 0;
         virtual std::list<task_base_t *> get_task_list() = 0;
         virtual void quit() = 0;
-        //        template <class _Fp, class... _Args>
-        //        task_base_t *create_task(int priority, _Fp &&f, _Args &&... args) { return nullptr; }
-        //        task_base_t *create_task(const task_func_t &func, const task_param_t &param, int priority = 0) { return nullptr; }
         virtual void destory_task(task_base_t **task) = 0;
     };
 
@@ -661,6 +643,14 @@ public:
             _tasks.insert(std::make_pair(std::make_pair(task->pri, task->id), task));
             return task;
         }
+        task_base_t *create_task_ref(int priority, _Fp &f, _Args &... args)
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            task_t<_Fp, _Args...> *task = new task_t<_Fp, _Args...>(priority, std::move(f), std::move(args)...);
+            assert(task);
+            _tasks.insert(std::make_pair(std::make_pair(task->pri, task->id), task));
+            return task;
+        }
         void destory_task(task_base_t **task) override
         {
             std::lock_guard<std::mutex> lock(_mutex);
@@ -676,114 +666,6 @@ public:
             *task = nullptr;
         }
     };
-
-    // template <>
-    // struct task_queue_t<task_func_t, task_param_t> : public task_queue_base_t
-    // {
-    //     std::map<std::pair<int, int>, task_t<task_func_t, task_param_t> *> _tasks;
-    //
-    //     explicit task_queue_t(simple_thread_pool *tp) noexcept : task_queue_base_t(tp) {}
-    //     ~task_queue_t() { clear(); }
-    //
-    //     void push_back(task_base_t *task) override
-    //     {
-    //         {
-    //             std::lock_guard<std::mutex> lock(_mutex);
-    //             task_t<task_func_t, task_param_t> *t = dynamic_cast<task_t<task_func_t, task_param_t> *>(task);
-    //             _tasks.insert(std::make_pair(std::make_pair(t->pri, t->id), t));
-    //             {
-    //                 std::lock_guard<std::mutex> lock(s_mutex);
-    //                 std::cout << __FUNCTION__ << ":" << __LINE__
-    //                           << ":t=" << test_current_time()
-    //                           << ":els=" << test_get_time_difference()
-    //                           << ":tid=" << std::this_thread::get_id()
-    //                           << ":pri=" << t->pri
-    //                           << ":oid=" << t->id
-    //                           << ":sz=" << _tasks.size()
-    //                           << std::endl;
-    //             }
-    //         }
-    //         _variable.notify_one();
-    //     }
-    //     task_base_t *front_pop() override
-    //     {
-    //         {
-    //             std::unique_lock<std::mutex> lock(_mutex);
-    //             _variable.wait(lock, [this]() -> bool {
-    //                 return _quit.load() || 0 != _tasks.size();
-    //             });
-    //         }
-    //         task_t<task_func_t, task_param_t> *ret = nullptr;
-    //         {
-    //             std::lock_guard<std::mutex> lock(_mutex);
-    //             if (_tasks.size() && !_quit.load())
-    //             {
-    //                 ret = _tasks.begin()->second;
-    //                 _tasks.erase(std::make_pair(ret->pri, ret->id));
-    //             }
-    //         }
-    //         return ret;
-    //     }
-    //     void clear() override
-    //     {
-    //         std::lock_guard<std::mutex> lock(_mutex);
-    //         std::cout << __FUNCTION__ << ":" << __LINE__
-    //                   << ":t=" << test_current_time()
-    //                   << ":els=" << test_get_time_difference()
-    //                   << ":tid=" << std::this_thread::get_id()
-    //                   << std::endl;
-    //         for (auto iter = _tasks.begin(); iter != _tasks.end(); ++iter)
-    //         {
-    //             task_t<task_func_t, task_param_t> *t = iter->second;
-    //             delete t;
-    //         }
-    //     }
-    //     std::list<task_base_t *> get_task_list() override
-    //     {
-    //         std::list<task_base_t *> ret;
-    //         {
-    //             std::lock_guard<std::mutex> lock(_mutex);
-    //             for (auto iter = _tasks.begin(); iter != _tasks.end(); ++iter)
-    //             {
-    //                 ret.push_back(iter->second);
-    //             }
-    //             _tasks.clear();
-    //         }
-    //         return ret;
-    //     }
-    //     void quit() override
-    //     {
-    //         {
-    //             std::lock_guard<std::mutex> lock(_mutex);
-    //             _quit.store(true);
-    //         }
-    //         _variable.notify_all();
-    //     }
-    //
-    //     task_base_t *create_task(const task_func_t &func, const task_param_t &param, int priority = 0)
-    //     {
-    //         std::lock_guard<std::mutex> lock(_mutex);
-    //         task_t<task_func_t, task_param_t> *task = new task_t<task_func_t, task_param_t>(func, param, priority);
-    //         assert(task);
-    //         _tasks.insert(std::make_pair(std::make_pair(task->pri, task->id), task));
-    //         return task;
-    //     }
-    //     void destory_task(task_base_t **task) override
-    //     {
-    //         std::lock_guard<std::mutex> lock(_mutex);
-    //         if (task && *task)
-    //         {
-    //             task_t<task_func_t, task_param_t> *t = dynamic_cast<task_t<task_func_t, task_param_t> *>(*task);
-    //             auto iter = _tasks.find(std::make_pair(t->pri, t->id));
-    //             if (iter != _tasks.end())
-    //             {
-    //                 _tasks.erase(iter);
-    //                 delete *task;
-    //             }
-    //         }
-    //         *task = nullptr;
-    //     }
-    // };
 
     enum task_strategy_t
     {
