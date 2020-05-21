@@ -2892,12 +2892,12 @@ static void print_sequence(std::integer_sequence<T, ints...> int_seq)
     std::cout << "The sequence of size " << int_seq.size() << ": ";
     //    ((std::cout << ints << ' '),...);
     //    std::cout << ints[0] << std::endl;
-    for (int i = 0; i < int_seq.size(); ++i)
-    {
-        //        std::cout << int_seq[i] << ' ';
-    }
-    std::cout << '\n';
-    std::integer_sequence<size_t, 1, 2, 4, 8> seq;
+    // for (int i = 0; i < int_seq.size(); ++i)
+    // {
+    //        std::cout << int_seq[i] << ' ';
+    // }
+    // std::cout << '\n';
+    // std::integer_sequence<size_t, 1, 2, 4, 8> seq;
     //    std::cout << seq[0] << std::endl;
     //    for (auto i: seq) {
     //        std::cout << i << std::endl;
@@ -2920,12 +2920,12 @@ static void print_sequence2(std::__tuple_indices<ints...> int_seq)
     {
         std::cout << i << std::endl;
     }
-    std::cout << "The sequence of size x2: ";
-    int int_array2[] = {(ints + 1)...};
-    for (auto i : int_array2)
-    {
-        std::cout << i << std::endl;
-    }
+    // std::cout << "The sequence of size x2: ";
+    // int int_array2[] = {(ints + 1)...};
+    // for (auto i : int_array2)
+    // {
+    //     std::cout << i << std::endl;
+    // }
 }
 
 template <class _TSp, class _Fp, class... _Args, size_t... _Indices>
@@ -2999,10 +2999,10 @@ static void *my_thread_proxy3(_Fp &&__v)
 {
     typedef typename std::__make_tuple_indices<std::tuple_size<_Fp>::value, 1>::type _Index;
     auto ret = std::make_index_sequence<std::tuple_size<_Fp>::value>();
-    print_sequence(ret);
-    print_sequence2(_Index());
+    //    print_sequence(ret);
+    //    print_sequence2(_Index());
     my_thread_execute3(__v, _Index());
-    print_sequence(std::index_sequence_for<float, std::iostream, char, std::string, void *, long long int>{});
+    //    print_sequence(std::index_sequence_for<float, std::iostream, char, std::string, void *, long long int>{});
     return nullptr;
 }
 template <class _Fp, class... _Args>
@@ -3011,6 +3011,63 @@ static void my_call_function3(_Fp &&__f, _Args &&... __args)
     my_thread_proxy3(std::make_tuple(std::move(__f), std::move(__args)...));
 }
 
+template <class _Fp, class... _Args, size_t... _Indices>
+static void my_thread_execute4(std::tuple<_Fp, _Args...> &__t, std::__tuple_indices<_Indices...>)
+{
+    std::move(std::get<0>(__t))(std::move(std::get<_Indices>(__t))...);
+}
+template <class _Fp, class... _Args, size_t... _Indices>
+static void my_thread_execute44(std::tuple<_Fp, _Args...> &__t, std::__tuple_indices<_Indices...>)
+{
+    auto ret = std::__tuple_indices<(_Indices + 1)...>();
+    print_sequence2(ret);
+    my_thread_execute4(__t, ret);
+}
+template <class _Fp>
+static void *my_thread_proxy4(_Fp &&__v)
+{
+    typedef typename std::__make_tuple_indices<std::tuple_size<_Fp>::value - 1, 0>::type _Index;
+    print_sequence2(_Index());
+    my_thread_execute44(__v, _Index());
+    return nullptr;
+}
+template <class _Fp, class... _Args>
+static void my_call_function4(_Fp &&__f, _Args &&... __args)
+{
+    my_thread_proxy4(std::make_tuple(std::move(__f), std::move(__args)...));
+}
+
+template <class _Fp, class... _Args, size_t... _Indices>
+static void my_thread_execute5(std::tuple<_Fp, _Args...> &__t, std::index_sequence<_Indices...>)
+{
+    std::move(std::get<0>(__t))(std::move(std::get<_Indices>(__t))...);
+}
+template <class _Fp, class... _Args, size_t... _Indices>
+static void my_thread_execute55(std::tuple<_Fp, _Args...> &__t, std::index_sequence<_Indices...>)
+{
+    auto ret = std::index_sequence<(_Indices + 1)...>(); // +1
+    print_sequence(ret);
+    my_thread_execute5(__t, ret);
+}
+template <class _Fp>
+static void *my_thread_proxy5(_Fp &&__v)
+{
+    auto ret = std::make_index_sequence<std::tuple_size<_Fp>::value - 1>(); // -1
+    print_sequence(ret);
+    my_thread_execute55(__v, ret);
+    return nullptr;
+}
+template <class _Fp, class... _Args>
+static void my_call_function5(_Fp &&__f, _Args &&... __args)
+{
+    my_thread_proxy5(std::make_tuple(std::move(__f), std::move(__args)...));
+}
+
+/**
+ * 实现变参函数调用 支持C++14
+ * 如果是C++11，需要自己写index_sequence相关实现
+ * invoke/index_sequence都是C++14新特性
+ */
 static void test38()
 {
     /**
@@ -3020,4 +3077,6 @@ static void test38()
     my_call_function(&test_function4, 1, 3.14, &a);
     my_call_function2(&test_function4, 1, 3.14, &a);
     my_call_function3(&test_function4, 1, 3.14, &a);
+    my_call_function4(&test_function4, 1, 3.14, &a);
+    my_call_function5(&test_function4, 1, 3.14, &a);
 }
