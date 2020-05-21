@@ -20,6 +20,7 @@
 #include <map>
 #include <iostream>
 #include <typeinfo>
+#include <tuple>
 
 class toop;
 
@@ -406,17 +407,37 @@ namespace std
         typedef remove_cv_t<remove_reference_t<T>> type;
     };
 #endif
+#if _LIBCPP_STD_VER > 17
+#else
+    template <class _Fp, class... _Args, size_t... _Indices>
+    static void __execute_v2(std::tuple<_Fp, _Args...> &__t, std::index_sequence<_Indices...>)
+    {
+        std::move(std::get<0>(__t))(std::move(std::get<_Indices>(__t))...);
+    }
+    template <class _Fp, class... _Args, size_t... _Indices>
+    static void __invoke_v2(std::tuple<_Fp, _Args...> &__t, std::index_sequence<_Indices...>)
+    {
+        auto ret = std::index_sequence<(_Indices + 1)...>(); // +1
+        __execute_v2(__t, ret);
+    }
+    template <class _Fp>
+    static void *_invoke_v2(_Fp &&__v)
+    {
+        auto ret = std::make_index_sequence<std::tuple_size<_Fp>::value - 1>(); // -1
+        __invoke_v2(__v, ret);
+        return nullptr;
+    }
+    template <class _Fp, class... _Args>
+    static void invoke_v2(_Fp &&f, _Args &&... args)
+    {
+        _invoke_v2(std::make_tuple(std::move(f), std::move(args)...));
+    }
+#endif
     template <class _Tp>
     typename decay<_Tp>::type
     decay_copy(_Tp &&__t)
     {
         return forward<_Tp>(__t);
-    }
-    template <size_t...> struct tuple_indices {};
-    template <class _Fp, class... _Args, size_t... _Indices>
-    void function_call(tuple<_Fp, _Args...> &t, tuple_indices<_Indices...>)
-    {
-        invoke(move(get<0>(t)), move(get<_Indices>(t))...);
     }
 } // namespace std
 
@@ -489,7 +510,7 @@ public:
     struct task_t : public task_base_t
     {
         std::tuple<typename std::decay<_Fp>::type, typename std::decay<_Args>::type...> params;
-        std::tuple<_Fp, _Args...> params2;
+        // std::tuple<_Fp, _Args...> params;
 
         // explicit task_t() noexcept {}
         explicit task_t(const int priority, _Fp &&f, _Args &&... args) noexcept

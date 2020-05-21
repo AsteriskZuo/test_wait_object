@@ -54,7 +54,7 @@ static void test37();
 static void test38();
 void test_timeout_object_function()
 {
-    test38();
+    test29();
 }
 
 timeout_object timeout_object::_s_obj;
@@ -1171,12 +1171,12 @@ void simple_thread_pool::post(task_func_t func, task_param_t param, int priority
     //     _task_queue->push_back(task);
     // }
     // else
-    {
-        std::stringstream ss;
-        ss << __FUNCTION__ << ":" << __LINE__ << ":error="
-           << "not_support_fix_parameter";
-        throw std::runtime_error(ss.str().c_str());
-    }
+    // {
+    //     std::stringstream ss;
+    //     ss << __FUNCTION__ << ":" << __LINE__ << ":error="
+    //        << "not_support_fix_parameter";
+    //     throw std::runtime_error(ss.str().c_str());
+    // }
 }
 template <class _Fp, class... _Args>
 void simple_thread_pool::postv(int priority, _Fp &&f, _Args &&... args)
@@ -1270,12 +1270,9 @@ void simple_thread_pool::thread_run_t::run()
                     // }
                     if (static_cast<void>(t2 = dynamic_cast<task_t<_Fp, _Args...> *>(task)), nullptr != t2)
                     {
-                        //ref: https://stackoverflow.com/questions/7858817/unpacking-a-tuple-to-call-a-matching-function-pointer
                         if (t2)
                         {
-                            static_assert(std::is_same<std::tuple<_Fp, _Args...>, std::tuple<typename std::decay<_Fp>::type, typename std::decay<_Args>::type...>>::value, "error");
-                            typedef typename std::__make_tuple_indices<std::tuple_size<std::tuple<_Fp, _Args...>>::value, 1>::type _Index;
-                            //                            std::function_call(t2->params, _Index());
+                            std::_invoke_v2(std::move(t2->params));
                             _q->destory_task(&task);
                         }
                     }
@@ -1304,6 +1301,7 @@ void simple_thread_pool::thread_run_t::run()
         }
 
         task_base_t *task = _q->front_pop();
+        task_t<_Fp, _Args...> *t2 = nullptr;
         // task_t<task_func_t, task_param_t> *t = nullptr;
         // if (static_cast<void>(t = dynamic_cast<task_t<task_func_t, task_param_t> *>(task)), nullptr != t)
         // {
@@ -1324,6 +1322,21 @@ void simple_thread_pool::thread_run_t::run()
         //         _q->destory_task(&task);
         //     }
         // }
+        if (static_cast<void>(t2 = dynamic_cast<task_t<_Fp, _Args...> *>(task)), nullptr != t2)
+        {
+            if (t2)
+            {
+                 std::_invoke_v2(std::move(t2->params));
+                _q->destory_task(&task);
+            }
+        }
+        else
+        {
+            std::stringstream ss;
+            ss << __FUNCTION__ << ":" << __LINE__ << ":err="
+               << "not_parse_param";
+            throw std::logic_error(ss.str().c_str());
+        }
     }
 }
 
@@ -2455,7 +2468,7 @@ typedef void (*work_object_memeber_function3_t)(int, int, void *);
 typedef void (*work_object_memeber_function2_t)(void *);
 static void test_add_thread_pool_task()
 {
-    int count = 1;
+    int count = 10;
     work_object *wobjs[count];
     for (size_t i = 0; i < count; i++)
     {
