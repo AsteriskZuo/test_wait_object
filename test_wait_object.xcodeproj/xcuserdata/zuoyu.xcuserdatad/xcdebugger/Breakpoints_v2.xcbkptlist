@@ -32,7 +32,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "1192"
             endingLineNumber = "1192"
-            landmarkName = "simple_thread_pool::postv(priority, f, args)"
+            landmarkName = "simple_thread_pool::thread_queue_t::thread_queue_t(q)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

@@ -18,6 +18,7 @@
 		EE71380224597D770030986E /* wait_timeout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EE71380124597D770030986E /* wait_timeout.cpp */; };
 		EE945E2B24638E63002CD246 /* my_memory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EE945E2924638E63002CD246 /* my_memory.cpp */; };
 		EE945E2E2465007F002CD246 /* simple_memory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EE945E2C2465007F002CD246 /* simple_memory.cpp */; };
+		EE9AB39724972A2D006B25B4 /* test_buffer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EE9AB39524972A2D006B25B4 /* test_buffer.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +44,8 @@
 		EE945E2C2465007F002CD246 /* simple_memory.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = simple_memory.cpp; sourceTree = "<group>"; };
 		EE945E2D2465007F002CD246 /* simple_memory.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = simple_memory.h; sourceTree = "<group>"; };
 		EE945E2F24650FBC002CD246 /* simple_memory.preprocess.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = simple_memory.preprocess.cpp; sourceTree = "<group>"; };
+		EE9AB39524972A2D006B25B4 /* test_buffer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = test_buffer.cpp; sourceTree = "<group>"; };
+		EE9AB39624972A2D006B25B4 /* test_buffer.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = test_buffer.hpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -96,6 +99,8 @@
 				EE7137EE24597D560030986E /* ViewController.mm */,
 				EE71380124597D770030986E /* wait_timeout.cpp */,
 				EE71380024597D770030986E /* wait_timeout.h */,
+				EE9AB39524972A2D006B25B4 /* test_buffer.cpp */,
+				EE9AB39624972A2D006B25B4 /* test_buffer.hpp */,
 			);
 			path = test_wait_object;
 			sourceTree = "<group>";
@@ -170,6 +175,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EE9AB39724972A2D006B25B4 /* test_buffer.cpp in Sources */,
 				7A5B239D24669D2700A64E2D /* timeout_object.cpp in Sources */,
 				EE7137EF24597D560030986E /* ViewController.mm in Sources */,
 				EE7137E924597D560030986E /* AppDelegate.m in Sources */,
