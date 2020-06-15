@@ -16,7 +16,7 @@
 #include <string>
 
 #define BUFFER_DEFAULT_SIZE 0x200
-#define BUFFER_DEFAULT_MAX_SIZE 0xffffff
+#define BUFFER_DEFAULT_MAX_SIZE 0x1fffff
 
 template <typename char_t, std::size_t n = BUFFER_DEFAULT_SIZE>
 class basic_buffer {
@@ -57,7 +57,7 @@ private:
         if (size >= BUFFER_DEFAULT_MAX_SIZE) {
             throw std::length_error("The requested memory exceeds the specified length.");
         }
-        buf_ = ::malloc(size);
+        buf_ = (char_t*)::malloc(size);
         buf_size_ = size;
     }
     void reallocate(const std::size_t new_size) {
@@ -71,7 +71,7 @@ private:
                 if (nullptr == new_buf) {
                     throw std::bad_alloc();
                 }
-                buf_ = new_buf;
+                buf_ = (char_t*)new_buf;
                 buf_size_ = new_size;
             }
         }
@@ -142,7 +142,7 @@ public:
     static bool convert_v2(const number_t &input, number_t &output) {
         std::size_t len = sizeof(number_t);
         if (1 == len) {
-            ;
+            output = input;
         } else if (2 == len) {
             output = (input & 0xff00) >> 8 | (input & 0x00ff) << 8;
         } else if (4 == len) {
@@ -167,22 +167,23 @@ private:
 template <typename char_t>
 class write_buffer : public basic_buffer<char_t> {
 private:
+    char_t *data_;
     std::size_t data_size_;
 
 public:
-    write_buffer() : basic_buffer<char_t>(), data_size_(0) {}
+    write_buffer() : basic_buffer<char_t>(), data_(nullptr), data_size_(0) { data_ = this->buf_; }
     ~write_buffer() {}
 
 public:
     template <typename number_t>
-    bool append_num(const number_t i) {
+    bool append_num(const number_t num) {
         bool ret = false;
         do {
-            number_t convert_i = 0;
-            if (!byte_order_convert<sizeof(number_t)>::convert_v2(i, convert_i)) {
+            number_t convert_num = 0;
+            if (!byte_order_convert<sizeof(number_t)>::convert_v2(num, convert_num)) {
                 break;
             }
-            if (!append_byte(&convert_i, sizeof(number_t))) {
+            if (!append_byte((const char*)&convert_num, sizeof(number_t))) {
                 break;
             }
             ret = true;
@@ -196,34 +197,40 @@ public:
             if (!append_num(str_size)) {
                 break;
             }
-            if (!append_byte(str, str_size)) {
+            if (!append_byte(str.data(), str_size)) {
                 break;
             }
             ret = true;
         } while (false);
         return ret;
     }
-    void append_variable1_length(const std::uint32_t vl) {
-        uint8_t lenBuf[4];
-        uint8_t digit;
-        uint8_t pos = 0;
-        std::uint32_t tmp = vl;
+    bool append_variable1_length(const std::uint32_t &vl) {
+        bool ret = false;
         do {
-            digit = tmp % 128;
-            tmp = tmp / 128;
-            if (tmp > 0) {
-                digit |= 0x80;
-            }
-            lenBuf[pos++] = digit;
-        } while (tmp > 0);
-        for (int i = 0; i < pos; ++i) {
-            append_byte(&lenBuf[i], 1);
-        }
+            uint8_t lenBuf[4] = {0};
+            uint8_t digit = 0;
+            uint8_t pos = 0;
+            std::uint32_t tmp = vl;
+            do {
+                digit = tmp % 128;
+                tmp = tmp / 128;
+                if (tmp > 0) {
+                    digit |= 0x80;
+                }
+                lenBuf[pos++] = digit;
+            } while (tmp > 0);
+            append_byte((const char*)lenBuf, pos);
+            ret = true;
+        } while (false);
+        return ret;
     }
     bool append_byte(const char_t *data, const std::size_t data_size) {
         bool ret = false;
         do {
-            std::size_t idle_size = basic_buffer<char_t>::buf_size_ - data_size_;
+            if (this->buf_ != data_) {
+                memmove(this->buf_, data_, data_size_);
+            }
+            std::size_t idle_size = this->buf_size_ - data_size_;
             if (data_size > idle_size) {
                 std::size_t new_size = (std::max)(this->buf_size_ + BUFFER_DEFAULT_SIZE, data_size + data_size_);
                 try {
@@ -232,10 +239,104 @@ public:
                     break;
                 }
             }
-            memcpy(this->buf_ + data_size_, data, data_size);
+            memcpy(data_ + data_size_, data, data_size);
+            data_size_ += data_size;
             ret = true;
         } while (false);
         return ret;
+    }
+    bool get_byte(char_t *&data, std::size_t &data_size) {
+        bool ret = false;
+        do {
+            data = data_;
+            data_size = data_size_;
+            data_ = 0;
+            data_size_ = 0;
+            ret = true;
+        } while (false);
+        return ret;
+    }
+};
+
+template <typename char_t>
+class read_buffer : public basic_buffer<char_t> {
+private:
+    char_t *data_;
+    std::size_t data_size_;
+
+public:
+    read_buffer() : basic_buffer<char_t>(), data_(nullptr), data_size_(0) {}
+    virtual ~read_buffer() {}
+
+public:
+    bool append_data(const char_t *data, const std::size_t data_size) {
+        /**
+         * |------|------------|----------|
+         */
+        bool ret = false;
+        do {
+            if (this->buf_ != data_) {
+                memmove(this->buf_, data_, data_size_);
+            }
+            std::size_t idle_size = this->buf_size_ - data_size_;
+            if (data_size > idle_size) {
+                std::size_t new_size = (std::max)(this->buf_size_ + BUFFER_DEFAULT_SIZE, data_size + data_size_);
+                try {
+                    this->resize(new_size);
+                } catch (const std::exception &e) {
+                    break;
+                }
+            }
+            memcpy(data_ + data_size_, data, data_size);
+            ret = true;
+        } while (false);
+        return ret;
+    }
+    char_t *get_byte(const std::size_t request_size) {
+        char_t *ret = nullptr;
+        if (data_ && data_size_ > request_size) {
+            ret = data_;
+            data_ += request_size;
+            data_size_ -= request_size;
+        }
+        return ret;
+    }
+    template <typename number_t>
+    bool get_num(number_t &num) {
+        bool ret = false;
+        do {
+            char_t *byte_num = get_byte(sizeof(number_t));
+            if (nullptr == byte_num) {
+                break;
+            }
+            number_t original_num = 0;
+            memcpy(&original_num, byte_num, sizeof(number_t));
+            if (!byte_order_convert<sizeof(number_t)>::convert_v2(original_num, num)) {
+                break;
+            }
+            ret = true;
+        } while (false);
+        return ret;
+    }
+    bool get_string(std::string &str) {
+        bool ret = false;
+        do {
+            std::uint16_t str_length = 0;
+            if (!get_num(str_length)) {
+                break;
+            }
+            char_t *str_data = get_byte(str_length);
+            if (!str_data) {
+                break;
+            }
+            str = std::string(str_data, str_length);
+            ret = true;
+        } while (false);
+        return ret;
+    }
+    bool get_variable1_length(std::uint32_t &vl) {
+        // TODO:
+        return false;
     }
 };
 
