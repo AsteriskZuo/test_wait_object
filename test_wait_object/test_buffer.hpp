@@ -57,7 +57,7 @@ private:
         if (size >= BUFFER_DEFAULT_MAX_SIZE) {
             throw std::length_error("The requested memory exceeds the specified length.");
         }
-        buf_ = (char_t*)::malloc(size);
+        buf_ = (char_t *)::malloc(size);
         buf_size_ = size;
     }
     void reallocate(const std::size_t new_size) {
@@ -71,7 +71,7 @@ private:
                 if (nullptr == new_buf) {
                     throw std::bad_alloc();
                 }
-                buf_ = (char_t*)new_buf;
+                buf_ = (char_t *)new_buf;
                 buf_size_ = new_size;
             }
         }
@@ -183,7 +183,7 @@ public:
             if (!byte_order_convert<sizeof(number_t)>::convert_v2(num, convert_num)) {
                 break;
             }
-            if (!append_byte((const char*)&convert_num, sizeof(number_t))) {
+            if (!append_byte((const char *)&convert_num, sizeof(number_t))) {
                 break;
             }
             ret = true;
@@ -219,7 +219,9 @@ public:
                 }
                 lenBuf[pos++] = digit;
             } while (tmp > 0);
-            append_byte((const char*)lenBuf, pos);
+            if (!append_byte((const char *)lenBuf, pos)) {
+                break;
+            }
             ret = true;
         } while (false);
         return ret;
