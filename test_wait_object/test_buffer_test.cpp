@@ -197,13 +197,13 @@ public:
     int *ptr;
     std::size_t ptr_size;
     test_move_class() : ptr(nullptr), ptr_size(0) {
-        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int*>(this) << std::endl;
+        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int *>(this) << std::endl;
     }
     test_move_class(const int value) : ptr(new int(value)), ptr_size(1) {
-        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int*>(this) << std::endl;
+        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int *>(this) << std::endl;
     }
     virtual ~test_move_class() {
-        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int*>(this) << std::endl;
+        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int *>(this) << std::endl;
         if (ptr) {
             delete ptr;
         }
@@ -229,6 +229,7 @@ public:
             }
             if (true) {
                 o.swap(*this);
+                // o.swap(test_move_class());// tip error is ok
                 test_move_class().swap(o);
             }
         }
@@ -266,4 +267,27 @@ static void test_move_class_case1() {
 
 TEST_CASE("test move class", "[test_move_class]") {
     test_move_class_case1();
+}
+
+static void test_data_buffer_move_op() {
+    // 自动调用父类构造函数、等函数
+    data_buffer<char> a;
+    data_buffer<char> b;
+    a = std::move(b);
+}
+TEST_CASE("test data buffer class", "[data_buffer]") {
+    test_data_buffer_move_op();
+}
+
+static void test_read_and_write_buffer_move_op() {
+    // 自动调用父类构造函数、等函数
+    read_buffer<char> a;
+    read_buffer<char> b;
+    a = std::move(b);
+    write_buffer<char> c;
+    write_buffer<char> d;
+    c = std::move(d);
+}
+TEST_CASE("test final buffer class", "[final_buffer]") {
+    test_read_and_write_buffer_move_op();
 }

@@ -99,11 +99,13 @@ public:
         this->free();
     }
     basic_buffer(basic_buffer &&o) {
-        this->move(o);
+        this->swap(o);
+        o.swap(basic_buffer());
     }
     basic_buffer &operator=(basic_buffer &&o) {
-        if (*this != o) {
-            this->move(o);
+        if (this != &o) {
+            this->swap(o);
+            o.swap(basic_buffer());
         }
         return *this;
     }
@@ -116,6 +118,14 @@ protected:
     char_t *buffer() const { return buf_; }
     void reset() {
         std::memset(buf_, 0, buf_size_);
+    }
+    void swap(basic_buffer &o) {
+        std::swap(buf_, o.buf_);
+        std::swap(buf_size_, o.buf_size_);
+    }
+    void move(basic_buffer &&o) {
+        buf_ = std::move(o.buf_);
+        buf_size_ = std::move(o.buf_size_);
     }
 
 private:
@@ -160,14 +170,6 @@ private:
         buf_ = nullptr;
         buf_size_ = 0;
     }
-    void swap(basic_buffer &o) {
-        std::swap(buf_, o.buf_);
-        std::swap(buf_size_, o.buf_size_);
-    }
-    void move(basic_buffer &&o) {
-        buf_ = std::move(o.buf_);
-        buf_size_ = std::move(o.buf_size_);
-    }
 
 private:
     // Disallow copying and assignment.
@@ -185,8 +187,34 @@ protected:
     std::size_t data_size_;
 
 public:
-    data_buffer() : basic_buffer<char_t>(), data_(nullptr), data_size_(0) { data_ = basic_buffer_t::buffer(); }
-    virtual ~data_buffer() {}
+    data_buffer() : data_(nullptr), data_size_(0) {
+        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int *>(this) << std::endl;
+        data_ = basic_buffer_t::buffer();
+    }
+    virtual ~data_buffer() {
+        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int *>(this) << std::endl;
+        data_ = nullptr;
+        data_size_ = 0;
+    }
+    data_buffer(data_buffer &&o) {
+        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int *>(this) << std::endl;
+        this->swap(o);
+        o.swap(data_buffer());
+    }
+    data_buffer &operator=(data_buffer &&o) {
+        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int *>(this) << std::endl;
+        if (this != &o) {
+            this->swap(o);
+            data_buffer().swap(o);
+        }
+        return *this;
+    }
+
+protected:
+    void swap(data_buffer &o) {
+        std::swap(data_, o.data_);
+        std::swap(data_size_, o.data_size_);
+    }
 
 public:
     char_t *get_data() { return data_; }
@@ -248,8 +276,13 @@ public:
     typedef data_buffer<char_t> data_buffer_t;
 
 public:
-    write_buffer() : data_buffer<char_t>() {}
+    write_buffer() {}
     ~write_buffer() {}
+    write_buffer(write_buffer &&o) {}
+    write_buffer &operator=(write_buffer &&o) {
+        data_buffer_t::operator=(dynamic_cast<data_buffer_t &&>(o));
+        return *this;
+    }
 
 public:
     template <typename number_t>
@@ -342,8 +375,13 @@ public:
     typedef data_buffer<char_t> data_buffer_t;
 
 public:
-    read_buffer() : data_buffer<char_t>() {}
+    read_buffer() {}
     virtual ~read_buffer() {}
+    read_buffer(read_buffer &&o) {}
+    read_buffer &operator=(read_buffer &&o) {
+        data_buffer_t::operator=(dynamic_cast<data_buffer_t &&>(o));
+        return *this;
+    }
 
 public:
     char_t *get_byte(const std::size_t request_size) {
