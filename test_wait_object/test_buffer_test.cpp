@@ -180,9 +180,90 @@ static void test_buffer_move2() {
     data_buffer<char> buf1;
     data_buffer<char> &&buf2(std::move(buf1));
     data_buffer<char> &&buf3 = std::move(buf1);
-//    buf2 = std::move(buf1);
+    //    buf2 = std::move(buf1);
 }
 
 TEST_CASE("test buffer copy", "[data_buffer]") {
+}
 
+//class test_move_class;
+//static void swap(test_move_class &l, test_move_class &r) {
+//    std::swap(r.ptr, l.ptr);
+//    std::swap(r.ptr_size, l.ptr_size);
+//}
+
+class test_move_class {
+public:
+    int *ptr;
+    std::size_t ptr_size;
+    test_move_class() : ptr(nullptr), ptr_size(0) {
+        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int*>(this) << std::endl;
+    }
+    test_move_class(const int value) : ptr(new int(value)), ptr_size(1) {
+        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int*>(this) << std::endl;
+    }
+    virtual ~test_move_class() {
+        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int*>(this) << std::endl;
+        if (ptr) {
+            delete ptr;
+        }
+        ptr = nullptr;
+    }
+    test_move_class(const test_move_class &) = delete;
+    test_move_class &operator=(const test_move_class &) = delete;
+    test_move_class(test_move_class &&o) {
+        if (false) {
+            this->move(std::move(o));
+            o.move(test_move_class());
+        }
+        if (true) {
+            o.swap(*this);
+            test_move_class().swap(o);
+        }
+    }
+    test_move_class &operator=(test_move_class &&o) {
+        if (this != &o) {
+            if (false) {
+                this->move(std::move(o));
+                o.move(test_move_class());
+            }
+            if (true) {
+                o.swap(*this);
+                test_move_class().swap(o);
+            }
+        }
+        return *this;
+    }
+    void swap(test_move_class &o) {
+        // 交换这种方式测试通过
+        if (this != &o) {
+            std::swap(this->ptr, o.ptr);
+            std::swap(this->ptr_size, o.ptr_size);
+        }
+    }
+    void move(test_move_class &&o) {
+        // 内存过度释放，可能原因是使用不当或者标准库存在问题
+        if (this != &o) {
+            if (this->ptr) {
+                delete this->ptr;
+                this->ptr = nullptr;
+            }
+            this->ptr = std::move(o.ptr);
+            this->ptr_size = std::move(o.ptr_size);
+        }
+    }
+};
+
+static void test_move_class_case1() {
+    test_move_class a(3);
+    test_move_class b(4);
+    //test_move_class c(b);// tip error is ok
+    //a = b;// tip error is ok
+    a = std::move(b); // ok
+    //a = std::move(a);// ok
+    //test_move_class c(std::move(b));// ok
+}
+
+TEST_CASE("test move class", "[test_move_class]") {
+    test_move_class_case1();
 }
