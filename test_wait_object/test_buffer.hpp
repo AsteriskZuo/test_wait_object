@@ -99,15 +99,20 @@ public:
         this->free();
     }
     basic_buffer(basic_buffer &&o) {
+        buf_ = nullptr;
+        buf_size_ = 0;
         this->swap(o);
-        o.swap(basic_buffer());
+        basic_buffer(true).swap(o);
     }
     basic_buffer &operator=(basic_buffer &&o) {
         if (this != &o) {
             this->swap(o);
-            o.swap(basic_buffer());
+            basic_buffer(true).swap(o);
         }
         return *this;
+    }
+    basic_buffer(bool is_temp_obj) : buf_(nullptr), buf_size_(0) {
+        // to do nothing
     }
 
 protected:
@@ -196,18 +201,23 @@ public:
         data_ = nullptr;
         data_size_ = 0;
     }
-    data_buffer(data_buffer &&o) {
+    data_buffer(data_buffer &&o) : basic_buffer_t(dynamic_cast<basic_buffer_t &&>(o)) {
         std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int *>(this) << std::endl;
         this->swap(o);
-        o.swap(data_buffer());
+        data_buffer(true).swap(o);
     }
     data_buffer &operator=(data_buffer &&o) {
         std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int *>(this) << std::endl;
+        basic_buffer_t::operator=(dynamic_cast<basic_buffer_t &&>(o));
         if (this != &o) {
             this->swap(o);
-            data_buffer().swap(o);
+            data_buffer(true).swap(o);
         }
         return *this;
+    }
+    data_buffer(bool is_temp_obj) : basic_buffer_t(is_temp_obj) {
+        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int *>(this) << std::endl;
+        // to do nothing
     }
 
 protected:
@@ -278,15 +288,18 @@ public:
 public:
     write_buffer() {}
     ~write_buffer() {}
-    write_buffer(write_buffer &&o) {}
+    write_buffer(write_buffer &&o) : data_buffer_t(dynamic_cast<data_buffer_t &&>(o)) {}
     write_buffer &operator=(write_buffer &&o) {
         data_buffer_t::operator=(dynamic_cast<data_buffer_t &&>(o));
         return *this;
     }
+    write_buffer(bool is_temp_obj) : data_buffer_t(is_temp_obj) {
+        // to do nothing
+    }
 
 public:
     template <typename number_t>
-    bool append_num(const number_t num) {
+    bool append_number(const number_t num) {
         bool ret = false;
         do {
             number_t convert_num = 0;
@@ -304,7 +317,7 @@ public:
         bool ret = false;
         do {
             std::uint16_t str_size = str.size();
-            if (!append_num(str_size)) {
+            if (!append_number(str_size)) {
                 break;
             }
             if (!data_buffer_t::append_byte(str.data(), str_size)) {
@@ -377,10 +390,13 @@ public:
 public:
     read_buffer() {}
     virtual ~read_buffer() {}
-    read_buffer(read_buffer &&o) {}
+    read_buffer(read_buffer &&o) : data_buffer_t(dynamic_cast<data_buffer_t &&>(o)) {}
     read_buffer &operator=(read_buffer &&o) {
         data_buffer_t::operator=(dynamic_cast<data_buffer_t &&>(o));
         return *this;
+    }
+    read_buffer(bool is_temp_obj) : data_buffer_t(is_temp_obj) {
+        // to do nothing
     }
 
 public:
@@ -394,7 +410,7 @@ public:
         return ret;
     }
     template <typename number_t>
-    bool get_num(number_t &num) {
+    bool get_number(number_t &num) {
         bool ret = false;
         do {
             char_t *byte_num = get_byte(sizeof(number_t));
@@ -414,7 +430,7 @@ public:
         bool ret = false;
         do {
             std::uint16_t str_length = 0;
-            if (!get_num(str_length)) {
+            if (!get_number(str_length)) {
                 break;
             }
             char_t *str_data = get_byte(str_length);

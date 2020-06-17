@@ -64,7 +64,7 @@ static void test_read_write_buffer_internal(char head, char checknum, std::uint3
         if (!buf->append_checksum_and_variable_length(vl, checknum)) {
             break;
         }
-        if (!buf->append_num(id)) {
+        if (!buf->append_number(id)) {
             break;
         }
         if (!buf->append_string(name)) {
@@ -99,7 +99,7 @@ static void test_read_write_buffer_internal(char head, char checknum, std::uint3
         if (!out_buf->get_checksum_and_variable_length(out_vl, out_checknum)) {
             break;
         }
-        if (!out_buf->get_num(out_id)) {
+        if (!out_buf->get_number(out_id)) {
             break;
         }
         if (!out_buf->get_string(out_name)) {
@@ -290,4 +290,15 @@ static void test_read_and_write_buffer_move_op() {
 }
 TEST_CASE("test final buffer class", "[final_buffer]") {
     test_read_and_write_buffer_move_op();
+}
+
+static void test_read_and_write_buffer_move_op2() {
+    // 自动调用父类构造函数、等函数
+    read_buffer<char> a;
+    read_buffer<char> b(std::move(a));
+    write_buffer<char> c;
+    write_buffer<char> d(std::move(c));
+}
+TEST_CASE("test final buffer class2", "[final_buffer]") {
+    test_read_and_write_buffer_move_op2();
 }
