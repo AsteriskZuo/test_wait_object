@@ -492,7 +492,11 @@ public:
             char_t checksum_org = *checksum_org_ptr;
             char_t vl_byte[4] = {0};
             std::size_t vl_byte_size = 0;
-            if (!peek_variable_length(vl_byte_size)) {
+            try {
+                if (!peek_variable_length(vl_byte_size)) {
+                    break;
+                }
+            } catch (const std::exception &e) {
                 break;
             }
             ::memcpy(vl_byte, data_buffer_t::data_, vl_byte_size);
