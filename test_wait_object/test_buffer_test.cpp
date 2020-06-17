@@ -281,6 +281,7 @@ TEST_CASE("test data buffer class", "[data_buffer]") {
 
 static void test_read_and_write_buffer_move_op() {
     // 自动调用父类构造函数、等函数
+    // a、b各需要3个相同内存块
     read_buffer<char> a;
     read_buffer<char> b;
     a = std::move(b);
@@ -294,6 +295,7 @@ TEST_CASE("test final buffer class", "[final_buffer]") {
 
 static void test_read_and_write_buffer_move_op2() {
     // 自动调用父类构造函数、等函数
+    // a、b各需要1个相同内存块
     read_buffer<char> a;
     read_buffer<char> b(std::move(a));
     write_buffer<char> c;
@@ -301,4 +303,38 @@ static void test_read_and_write_buffer_move_op2() {
 }
 TEST_CASE("test final buffer class2", "[final_buffer]") {
     test_read_and_write_buffer_move_op2();
+}
+
+static void test_read_and_write_buffer_append_large_data(int num) {
+    read_buffer<char> a;
+    std::string str = u8"1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"; //100
+    bool ret = false;
+    for (size_t i = 0; i < num; i++) {
+        ret = a.append_byte(str.data(), str.size());
+        if (false == ret) {
+            break;
+        }
+    }
+    std::string result = std::string(a.get_byte(str.size() * num), str.size() * num);
+    int b = 0;
+}
+static void test_read_and_write_buffer_append_512() {
+    read_buffer<char> a;
+    std::string str = u8"12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012"; //512
+    a.append_byte(str.data(), str.size());
+    a.append_byte(str.data(), 1);
+}
+TEST_CASE("test add large data", "[final_buffer]") {
+    SECTION("512 byte") {
+        test_read_and_write_buffer_append_512();
+    }
+    SECTION("100 byte") {
+        test_read_and_write_buffer_append_large_data(1);
+    }
+    SECTION("600 byte") {
+        test_read_and_write_buffer_append_large_data(6);
+    }
+    SECTION("6000 byte") {
+        test_read_and_write_buffer_append_large_data(60);
+    }
 }
