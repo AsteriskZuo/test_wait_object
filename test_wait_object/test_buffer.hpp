@@ -232,6 +232,9 @@ public:
     bool append_byte(const char_t *data, const std::size_t data_size) {
         bool ret = false;
         do {
+            if (nullptr == data || 0 == data_size) {
+                break;
+            }
             if (basic_buffer_t::buffer() != data_) {
                 ::memmove(basic_buffer_t::buffer(), data_, data_size_);
                 data_ = basic_buffer_t::buffer();
