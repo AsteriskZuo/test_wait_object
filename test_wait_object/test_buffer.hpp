@@ -13,6 +13,7 @@
 #include <exception>
 #include <iostream>
 #include <memory>
+#include <queue>
 #include <stdexcept>
 #include <string>
 
@@ -445,46 +446,6 @@ public:
         } while (false);
         return ret;
     }
-    bool peek_variable_length(std::size_t &vl_byte_size) {
-        bool ret = false;
-        do {
-            if (!data_buffer_t::data_ || 0 == data_buffer_t::data_size_) {
-                break;
-            }
-            vl_byte_size = 0;
-            bool data_error = false;
-            std::size_t data_size_tmp = data_buffer_t::data_size_;
-            char_t *lv_byte_head = data_buffer_t::data_;
-            //            char_t *lv_byte_tail = data_buffer_t::data_ + data_buffer_t::data_size_;
-            do {
-                if (0 == ((*lv_byte_head) & 0x80)) {
-                    ++vl_byte_size;
-                    break;
-                } else {
-                    ++vl_byte_size;
-                }
-                --data_size_tmp;
-                if (0 == data_size_tmp) {
-                    if (0 != ((*lv_byte_head) & 0x80)) {
-                        data_error = true;
-                        throw std::logic_error("The data is error.");
-                    }
-                    break;
-                }
-                if (4 == vl_byte_size) {
-                    data_error = true;
-                    throw std::logic_error("The data is too long.");
-                    break;
-                }
-                ++lv_byte_head;
-            } while (0 < data_size_tmp);
-            if (data_error) {
-                break;
-            }
-            ret = true;
-        } while (false);
-        return ret;
-    }
     bool get_checksum_and_variable_length(std::uint32_t &vl_num, char_t &checksum) {
         bool ret = false;
         do {
@@ -496,7 +457,7 @@ public:
             char_t vl_byte[4] = {0};
             std::size_t vl_byte_size = 0;
             try {
-                if (!peek_variable_length(vl_byte_size)) {
+                if (peek_variable_length(data_buffer_t::data_, data_buffer_t::data_size_, vl_byte_size)) {
                     break;
                 }
             } catch (const std::exception &e) {
@@ -510,6 +471,53 @@ public:
             }
             checksum = checksum_org;
             ret = true;
+        } while (false);
+        return ret;
+    }
+    /**
+     * @brief peek variable length
+     * 
+     * @param data 
+     * @param data_size 
+     * @param vl_byte_size 
+     * @return int 0.success 1.fail 2.not enough
+     */
+    static int peek_variable_length(const char_t *data, const std::size_t data_size, std::size_t &vl_byte_size) {
+        int ret = 0; // 0.success 1.fail 2.not enough
+        do {
+            if (!data || 0 == data_size) {
+                break;
+            }
+            vl_byte_size = 0;
+            std::size_t data_size_tmp = data_size;
+            const char_t *lv_byte_head = data;
+            do {
+                if (0 == ((*lv_byte_head) & 0x80)) {
+                    ++vl_byte_size;
+                    break;
+                } else {
+                    ++vl_byte_size;
+                }
+                --data_size_tmp;
+                if (0 == data_size_tmp) {
+                    if (0 != ((*lv_byte_head) & 0x80)) {
+                        if (3 == vl_byte_size) {
+                            ret = 1;
+                            // throw std::logic_error("The data is too long.");
+                        } else {
+                            ret = 2;
+                            // throw std::logic_error("The data is not enough.");
+                        }
+                    }
+                    break;
+                }
+                if (4 == vl_byte_size) {
+                    ret = 1;
+                    // throw std::logic_error("The data is too long.");
+                    break;
+                }
+                ++lv_byte_head;
+            } while (0 < data_size_tmp);
         } while (false);
         return ret;
     }
@@ -530,6 +538,53 @@ public:
         } while (false);
         return ret;
     }
+};
+
+#define READ_BYTE_BUFFER_MAX_SIZE 0x800
+
+class byte_buffer_from_server final {
+public:
+    struct citylife_protocol {
+        citylife_protocol() : cp_buffer(std::make_shared<read_buffer<char>>()), cp_buffer_size(0), cp_buffer_current_size(0), head(0), checknum(0), vl_num(0), vl_byte_size(0) {}
+        ~citylife_protocol() {}
+        std::shared_ptr<read_buffer<char>> cp_buffer;
+        std::size_t cp_buffer_size;
+        std::size_t cp_buffer_current_size;
+        char head;
+        char checknum;
+        std::size_t vl_num;
+        std::size_t vl_byte_size;
+    };
+
+private:
+
+    std::queue<std::shared_ptr<citylife_protocol>> _cp_list;
+    char _org_buffer[READ_BYTE_BUFFER_MAX_SIZE];
+
+public:
+    byte_buffer_from_server(/* args */) { memset(_org_buffer, 0x00, READ_BYTE_BUFFER_MAX_SIZE); }
+    ~byte_buffer_from_server() {}
+
+public:
+    void push(const std::shared_ptr<citylife_protocol> cp) {
+        _cp_list.push(cp);
+    }
+    std::shared_ptr<citylife_protocol> front_and_pop() {
+        if (_cp_list.size()) {
+            auto ret = _cp_list.front();
+            _cp_list.pop();
+            return ret;
+        }
+        return nullptr;
+    }
+    std::shared_ptr<citylife_protocol> back() {
+        if (_cp_list.size()) {
+            auto ret = _cp_list.back();
+            return ret;
+        }
+        return nullptr;
+    }
+    int read_buffer_from_server(const int sock);
 };
 
 #endif /* test_buffer_hpp */
