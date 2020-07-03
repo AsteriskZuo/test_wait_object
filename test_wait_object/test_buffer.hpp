@@ -9,9 +9,13 @@
 #ifndef test_buffer_hpp
 #define test_buffer_hpp
 
+#include <algorithm> // for std::max std::min
 #include <cstdlib>
+#include <cstdlib> // for std::malloc std::realloc std::free
+#include <cstring> // for std::memset stdstd::memcpy std::memmove
 #include <exception>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <queue>
 #include <stdexcept>
@@ -53,10 +57,10 @@ public:
     static bool convert(const number_t &input, number_t &output) {
         unsigned char input_bytes[vl_num_tmp] = {0};
         unsigned char output_bytes[vl_num_tmp] = {0};
-        ::memcpy(input_bytes, &input, vl_num_tmp);
+        std::memcpy(input_bytes, &input, vl_num_tmp);
         bool ret = convert(input_bytes, output_bytes);
         if (ret) {
-            ::memcpy(&output, output_bytes, vl_num_tmp);
+            std::memcpy(&output, output_bytes, vl_num_tmp);
         }
         return ret;
     }
@@ -141,7 +145,7 @@ private:
                 throw std::length_error("The requested memory exceeds the specified vl_num_tmp.");
                 break;
             }
-            buf_ = (char_t *)::malloc(size);
+            buf_ = (char_t *)std::malloc(size);
             if (nullptr == buf_) {
                 throw std::bad_alloc();
                 break;
@@ -158,7 +162,7 @@ private:
             if (0 == new_size) {
                 this->free();
             } else {
-                void *new_buf = ::realloc(buf_, new_size);
+                void *new_buf = std::realloc(buf_, new_size);
                 if (nullptr == new_buf) {
                     this->free();
                     throw std::bad_alloc();
@@ -171,7 +175,7 @@ private:
     }
     void free() {
         if (buf_) {
-            ::free(buf_);
+            std::free(buf_);
         }
         buf_ = nullptr;
         buf_size_ = 0;
@@ -236,8 +240,11 @@ public:
             if (nullptr == data || 0 == data_size) {
                 break;
             }
+            if (data_size_ + data_size >= std::numeric_limits<std::size_t>::max()) {
+                break;
+            }
             if (basic_buffer_t::buffer() != data_) {
-                ::memmove(basic_buffer_t::buffer(), data_, data_size_);
+                std::memmove(basic_buffer_t::buffer(), data_, data_size_);
                 data_ = basic_buffer_t::buffer();
             }
             std::size_t idle_size = basic_buffer_t::buffer_size() - data_size_;
@@ -251,7 +258,7 @@ public:
                     break;
                 }
             }
-            ::memcpy(data_ + data_size_, data, data_size);
+            std::memcpy(data_ + data_size_, data, data_size);
             data_size_ += data_size;
             ret = true;
         } while (false);
@@ -355,8 +362,23 @@ public:
         do {
             data = data_buffer_t::data_;
             data_size = data_buffer_t::data_size_;
-            data_buffer_t::data_ = basic_buffer_t::buffer();
+            data_buffer_t::data_ = nullptr;
             data_buffer_t::data_size_ = 0;
+            ret = true;
+        } while (false);
+        return ret;
+    }
+    bool get_byte(const std::size_t request_data_size, char_t *&data, std::size_t &data_size) {
+        bool ret = false;
+        do {
+            if (data_buffer_t::data_size_ <= request_data_size) {
+                ret = get_all_byte(data, data_size);
+                break;
+            }
+            data = data_buffer_t::data_;
+            data_size = request_data_size;
+            data_buffer_t::data_ = +data_size;
+            data_buffer_t::data_size_ -= data_size;
             ret = true;
         } while (false);
         return ret;
@@ -377,8 +399,11 @@ public:
                 vl_byte_tmp[vl_index] = one_byte;
                 code ^= vl_byte_tmp[vl_index];
                 ++vl_index;
-            } while (vl_num_tmp > 0);
-            ::memcpy(vl_byte, vl_byte_tmp, vl_index);
+            } while (vl_num_tmp > 0 && 4 > vl_index);
+            std::memcpy(vl_byte, vl_byte_tmp, vl_index);
+            if (4 == vl_index) {
+                break;
+            }
             vl_byte_size = vl_index;
             ret = true;
         } while (false);
@@ -422,7 +447,7 @@ public:
                 break;
             }
             number_t original_num = 0;
-            ::memcpy(&original_num, byte_num, sizeof(number_t));
+            std::memcpy(&original_num, byte_num, sizeof(number_t));
             if (!byte_order_convert<sizeof(number_t)>::convert_v2(original_num, num)) {
                 break;
             }
@@ -463,7 +488,7 @@ public:
             } catch (const std::exception &e) {
                 break;
             }
-            ::memcpy(vl_byte, data_buffer_t::data_, vl_byte_size);
+            std::memcpy(vl_byte, data_buffer_t::data_, vl_byte_size);
             data_buffer_t::data_ += vl_byte_size;
             data_buffer_t::data_size_ -= vl_byte_size;
             if (!get_checksum_and_variable_length(vl_byte, vl_byte_size, checksum_org, vl_num)) {
@@ -501,7 +526,7 @@ public:
                 --data_size_tmp;
                 if (0 == data_size_tmp) {
                     if (0 != ((*lv_byte_head) & 0x80)) {
-                        if (3 == vl_byte_size) {
+                        if (4 == vl_byte_size || 3 == vl_byte_size) {
                             ret = 1;
                             // throw std::logic_error("The data is too long.");
                         } else {
@@ -527,11 +552,25 @@ public:
             std::uint8_t one_byte = 0;
             std::uint32_t vl_num_tmp = 0;
             std::uint32_t multiplier = 1;
-            for (int i = 0; i < vl_byte_size; ++i) {
+            int count = 0;
+            bool is_ok = true;
+            for (int i = 0; i < vl_byte_size && i < 3; ++i) {
                 one_byte = vl_byte[i];
                 checksum ^= vl_byte[i];
                 vl_num_tmp += (one_byte & 0x7f) * multiplier;
                 multiplier *= 0x80;
+                ++count;
+                if (count == vl_byte_size && one_byte & 0x80) {
+                    is_ok = false;
+                    break;
+                }
+                if (3 == count && one_byte & 0x80) {
+                    is_ok = false;
+                    break;
+                }
+            }
+            if (false == is_ok) {
+                break;
             }
             vl_num = vl_num_tmp;
             ret = true;
@@ -557,7 +596,6 @@ public:
     };
 
 private:
-
     std::queue<std::shared_ptr<citylife_protocol>> _cp_list;
     char _org_buffer[READ_BYTE_BUFFER_MAX_SIZE];
 
@@ -585,6 +623,7 @@ public:
         return nullptr;
     }
     int read_buffer_from_server(const int sock);
+    int read_buffer_from_server(const char *data, const long data_size);
 };
 
 #endif /* test_buffer_hpp */

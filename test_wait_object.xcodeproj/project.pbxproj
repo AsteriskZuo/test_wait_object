@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		7A5B239D24669D2700A64E2D /* timeout_object.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7A5B239B24669D2700A64E2D /* timeout_object.cpp */; };
+		EE307D3D24AF512D00E2C146 /* test_buffer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = EE9AB39524972A2D006B25B4 /* test_buffer.cpp */; };
 		EE7137E924597D560030986E /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = EE7137E824597D560030986E /* AppDelegate.m */; };
 		EE7137EC24597D560030986E /* SceneDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = EE7137EB24597D560030986E /* SceneDelegate.m */; };
 		EE7137EF24597D560030986E /* ViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = EE7137EE24597D560030986E /* ViewController.mm */; };
@@ -235,6 +236,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				EE9AB3992498BB76006B25B4 /* test_buffer_test.cpp in Sources */,
+				EE307D3D24AF512D00E2C146 /* test_buffer.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

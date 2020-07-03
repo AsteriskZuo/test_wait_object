@@ -338,3 +338,404 @@ TEST_CASE("test add large data", "[final_buffer]") {
         test_read_and_write_buffer_append_large_data(60);
     }
 }
+
+/**
+ * 从服务器接收消息：拆包、粘包测试
+ * case1：单个协议：变长为0
+ * case2：单个协议：变长不为0
+ * case3：两个协议
+ * case4：单个不完整协议：只有head
+ * case5：单个不完整协议：只有head和checknum
+ * case6：单个不完整协议：只有head、checknum、和变长第一个字节（一共两个字节）
+ * case7：单个不完整协议：只有head、checknum、和变长完整字节
+ * case8：单个不完整协议：只有head、checknum、变长完整字节和部分协议体
+ * case9：单个协议，加上单个不完整协议：只有head、checknum、变长完整字节和部分协议体
+ * case10：变长解析：1个字节的变长
+ * case11：变长解析：2个字节的变长
+ * case12：变长解析：3个字节的变长
+ * case13：变长解析：4个字节的变长
+ * case14：变长解析：变长字节不符合规范
+ * case15：变长解析：变长需要2个字节，但是只给1个字节
+ * case16：变长解析：变长需要3个字节，但是只给1个字节
+ * case17：变长解析：变长需要3个字节，但是只给2个字节
+ */
+
+TEST_CASE("test variable length", "[data_buffer]") {
+    SECTION("case10：变长解析：1个字节的变长") {
+        std::uint32_t vl_num = 8;
+        char vl_byte[4] = {0};
+        std::size_t vl_byte_size = 0;
+        char code = (char)0x00;
+        write_buffer<char>::get_checksum_and_variable_length(vl_num, vl_byte, vl_byte_size, code);
+
+        char output_checknum = (char)0x00;
+        std::uint32_t output_vl_num = 0;
+        read_buffer<char>::get_checksum_and_variable_length(vl_byte, vl_byte_size, output_checknum, output_vl_num);
+        REQUIRE(vl_num == output_vl_num);
+
+        std::size_t output_vl_byte_size = 0;
+        int output_ret2 = read_buffer<char>::peek_variable_length(vl_byte, vl_byte_size, output_vl_byte_size);
+        REQUIRE(0 == output_ret2);
+    }
+    SECTION("case11：变长解析：2个字节的变长") {
+        std::uint32_t vl_num = 2445;
+        char vl_byte[4] = {0};
+        std::size_t vl_byte_size = 0;
+        char code = (char)0x00;
+        write_buffer<char>::get_checksum_and_variable_length(vl_num, vl_byte, vl_byte_size, code);
+
+        char output_checknum = (char)0x00;
+        std::uint32_t output_vl_num = 0;
+        read_buffer<char>::get_checksum_and_variable_length(vl_byte, vl_byte_size, output_checknum, output_vl_num);
+        REQUIRE(vl_num == output_vl_num);
+
+        std::size_t output_vl_byte_size = 0;
+        int output_ret2 = read_buffer<char>::peek_variable_length(vl_byte, vl_byte_size, output_vl_byte_size);
+        REQUIRE(0 == output_ret2);
+    }
+    SECTION("case12：变长解析：3个字节的变长") {
+        std::uint32_t vl_num = 22644;
+        char vl_byte[4] = {0};
+        std::size_t vl_byte_size = 0;
+        char code = (char)0x00;
+        write_buffer<char>::get_checksum_and_variable_length(vl_num, vl_byte, vl_byte_size, code);
+
+        char output_checknum = (char)0x00;
+        std::uint32_t output_vl_num = 0;
+        read_buffer<char>::get_checksum_and_variable_length(vl_byte, vl_byte_size, output_checknum, output_vl_num);
+        REQUIRE(vl_num == output_vl_num);
+
+        std::size_t output_vl_byte_size = 0;
+        int output_ret2 = read_buffer<char>::peek_variable_length(vl_byte, vl_byte_size, output_vl_byte_size);
+        REQUIRE(0 == output_ret2);
+    }
+    SECTION("case13：变长解析：4个字节的变长") {
+        std::uint32_t vl_num = 725972140;
+        char vl_byte[4] = {0};
+        std::size_t vl_byte_size = 0;
+        char code = (char)0x00;
+        bool input_ret = write_buffer<char>::get_checksum_and_variable_length(vl_num, vl_byte, vl_byte_size, code);
+
+        char output_checknum = (char)0x00;
+        std::uint32_t output_vl_num = 0;
+        vl_byte_size = 4; // for test
+        bool output_ret = read_buffer<char>::get_checksum_and_variable_length(vl_byte, vl_byte_size, output_checknum, output_vl_num);
+        REQUIRE(false == input_ret);
+        REQUIRE(false == output_ret);
+
+        std::size_t output_vl_byte_size = 0;
+        int output_ret2 = read_buffer<char>::peek_variable_length(vl_byte, vl_byte_size, output_vl_byte_size);
+        REQUIRE(1 == output_ret2);
+    }
+    SECTION("case14：变长解析：变长字节不符合规范") {
+    }
+    SECTION("case15：变长解析：变长需要2个字节，但是只给1个字节") {
+        std::uint32_t vl_num = 2445;
+        char vl_byte[4] = {0};
+        std::size_t vl_byte_size = 0;
+        char code = (char)0x00;
+        write_buffer<char>::get_checksum_and_variable_length(vl_num, vl_byte, vl_byte_size, code);
+
+        char output_checknum = (char)0x00;
+        std::uint32_t output_vl_num = 0;
+        vl_byte_size = 1;
+        bool output_ret = read_buffer<char>::get_checksum_and_variable_length(vl_byte, vl_byte_size, output_checknum, output_vl_num);
+        REQUIRE(false == output_ret);
+
+        std::size_t output_vl_byte_size = 0;
+        int output_ret2 = read_buffer<char>::peek_variable_length(vl_byte, vl_byte_size, output_vl_byte_size);
+        REQUIRE(2 == output_ret2);
+    }
+    SECTION("case16：变长解析：变长需要3个字节，但是只给1个字节") {
+        std::uint32_t vl_num = 22644;
+        char vl_byte[4] = {0};
+        std::size_t vl_byte_size = 0;
+        char code = (char)0x00;
+        write_buffer<char>::get_checksum_and_variable_length(vl_num, vl_byte, vl_byte_size, code);
+
+        char output_checknum = (char)0x00;
+        std::uint32_t output_vl_num = 0;
+        vl_byte_size = 1;
+        bool output_ret = read_buffer<char>::get_checksum_and_variable_length(vl_byte, vl_byte_size, output_checknum, output_vl_num);
+        REQUIRE(false == output_ret);
+
+        std::size_t output_vl_byte_size = 0;
+        int output_ret2 = read_buffer<char>::peek_variable_length(vl_byte, vl_byte_size, output_vl_byte_size);
+        REQUIRE(2 == output_ret2);
+    }
+    SECTION("case17：变长解析：变长需要3个字节，但是只给2个字节") {
+        std::uint32_t vl_num = 22644;
+        char vl_byte[4] = {0};
+        std::size_t vl_byte_size = 0;
+        char code = (char)0x00;
+        write_buffer<char>::get_checksum_and_variable_length(vl_num, vl_byte, vl_byte_size, code);
+
+        char output_checknum = (char)0x00;
+        std::uint32_t output_vl_num = 0;
+        vl_byte_size = 2;
+        bool output_ret = read_buffer<char>::get_checksum_and_variable_length(vl_byte, vl_byte_size, output_checknum, output_vl_num);
+        REQUIRE(false == output_ret);
+
+        std::size_t output_vl_byte_size = 0;
+        int output_ret2 = read_buffer<char>::peek_variable_length(vl_byte, vl_byte_size, output_vl_byte_size);
+        REQUIRE(2 == output_ret2);
+    }
+}
+
+class test_protocol_factory {
+public:
+    struct create_protocol_info {
+        bool is_whole_protocol; //true = yes false = no
+
+        int is_exist_head;     // 0.not exist 1.exit part
+        int is_exist_checksum; // 0.not exist 1.exit part
+
+        int is_exist_vl; // 0.not exist 1.exit part 2.exit whole
+        int vl_whole_length;
+        int vl_part_length;
+
+        int is_exist_body; // 0.not exist 1.exit part 2.exit whole
+        int body_whole_length;
+        int body_part_length;
+    };
+    struct create_error_protocol_info {
+        int error_format; //1.没有head 2.没有check 3.变长错误 4.协议体和变长不一致
+    };
+
+public:
+    test_protocol_factory(/* args */) {}
+    ~test_protocol_factory() {}
+
+    /**
+     * 创建正确的协议字节流
+     * @param info 创建协议需求
+     * @param out_data 协议流
+     * @param out_data_size 协议流长度
+     * @return bool 是否创建成功 true.成功
+     */
+    static bool create_buffer_from_message(const create_protocol_info &info, char *out_data, std::size_t &out_data_size) {
+        bool ret = false;
+        do {
+            if (info.is_whole_protocol) {
+                int body_whole_length = info.body_whole_length;
+
+                char head = (char)(4 << 4);
+                write_buffer<char> buffer;
+                buffer.append_byte(&head, 1);
+                buffer.append_checksum_and_variable_length(body_whole_length, head);
+
+                if (0 != body_whole_length) {
+                    int body_whole_length_digit = 0;
+                    if (0 > body_whole_length) {
+                        break;
+                    }
+                    while (0 < body_whole_length) {
+                        int tmp = body_whole_length / 10;
+                        ++body_whole_length_digit;
+                        if (0 == tmp) {
+                            break;
+                        }
+                        body_whole_length = tmp;
+                    }
+                    std::string body_whole_length_num = std::to_string(body_whole_length);
+                    std::string body = body_whole_length_num;
+                    body.append(std::string(info.body_whole_length - 2 * body_whole_length_digit, 'b'));
+                    body.append(body_whole_length_num);
+                    buffer.append_byte(body.c_str(), body.size());
+                }
+                out_data_size = buffer.get_data_size();
+                out_data = new char[out_data_size];
+                std::memcpy(out_data, buffer.get_data(), out_data_size);
+                ret = true;
+            }
+        } while (false);
+        return ret;
+    }
+
+    /**
+     * @brief Create a error buffer from message object
+     * 错误数据：用例：
+     * 1.没有head
+     * 2.没有checknum
+     * 3.变长错误
+     * 4.协议体和变长不一致:变长多
+     * 5.协议体和变长不一致:协议体多
+     * 
+     * @param info 错误规则
+     * @param out_data 输出错误数据流
+     * @param out_data_size 错误数据流长度
+     * @return true 创建成功
+     * @return false 创建失败
+     */
+    static bool create_error_buffer_from_message(const create_error_protocol_info &info, char *out_data, std::size_t &out_data_size) {
+        bool ret = false;
+        do {
+            write_buffer<char> buffer;
+            if (1 == info.error_format) {
+                char head = 64; //4
+                const char *body = "123456";
+                buffer.append_checksum_and_variable_length(strlen(body), 0);
+                buffer.append_byte(body, strlen(body));
+            } else if (2 == info.error_format) {
+                char head = 64; //4
+                std::string body = std::string(6, 'b');
+                buffer.append_checksum_and_variable_length(body.size(), head);
+                char output[4] = {0};
+                std::size_t output_size = 0;
+                buffer.get_all_byte((char *&)output, output_size);
+                buffer.append_byte(&head, 1);
+                buffer.append_byte(output + 1, output_size - 1);
+                buffer.append_byte(body.c_str(), body.size());
+            } else if (3 == info.error_format) {
+                char head = 64; //4
+                std::string body = std::string(450, 'b');
+                buffer.append_checksum_and_variable_length(body.size(), head);
+                char output[4] = {0};
+                std::size_t output_size = 0;
+                buffer.get_all_byte((char *&)output, output_size);
+                buffer.append_byte(&head, 1);
+                buffer.append_byte(output, output_size - 1);
+                buffer.append_byte(body.c_str(), body.size());
+            } else if (4 == info.error_format) {
+                char head = 64; //4
+                std::string body = std::string(450, 'b');
+                buffer.append_checksum_and_variable_length(body.size(), head);
+                char output[4] = {0};
+                std::size_t output_size = 0;
+                buffer.get_all_byte((char *&)output, output_size);
+                buffer.append_byte(&head, 1);
+                buffer.append_byte(output, output_size);
+                body = body.substr(10);
+                buffer.append_byte(body.c_str(), body.size());
+            } else if (5 == info.error_format) {
+                char head = 64; //4
+                std::string body = std::string(450, 'b');
+                buffer.append_checksum_and_variable_length(body.size(), head);
+                char output[4] = {0};
+                std::size_t output_size = 0;
+                buffer.get_all_byte((char *&)output, output_size);
+                buffer.append_byte(&head, 1);
+                buffer.append_byte(output, output_size);
+                body.append(std::string("extra"));
+                buffer.append_byte(body.c_str(), body.size());
+            }
+
+        } while (false);
+        return ret;
+    }
+};
+
+TEST_CASE("test read buffer from server", "[byte_buffer]") {
+    SECTION("case1：单个协议：变长为0") {
+        test_protocol_factory::create_protocol_info info;
+        info.is_whole_protocol = true;
+        info.body_whole_length = 0;
+        char *data = nullptr;
+        std::size_t data_size = 0;
+        REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+        read_buffer<char> buffer;
+        REQUIRE(true == buffer.append_byte(data, data_size));
+        char output_head = *buffer.get_byte(1);
+        char output_checknum;
+        std::size_t output_vl_num = 0;
+        REQUIRE(true == buffer.get_checksum_and_variable_length((std::uint32_t &)output_vl_num, output_checknum));
+        REQUIRE(0 == output_vl_num);
+        REQUIRE(0 == buffer.get_data_size());
+        REQUIRE(nullptr == buffer.get_data());
+        byte_buffer_from_server byte_buffer;
+        int ret = byte_buffer.read_buffer_from_server(data, data_size);
+        std::shared_ptr<byte_buffer_from_server::citylife_protocol> cp_buffer = byte_buffer.front_and_pop();
+        REQUIRE(nullptr != cp_buffer.get());
+    }
+    SECTION("case2：单个协议：变长不为0") {
+        test_protocol_factory::create_protocol_info info;
+        info.is_whole_protocol = true;
+        info.body_whole_length = 6;
+        char *data = nullptr;
+        std::size_t data_size = 0;
+        REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+        read_buffer<char> buffer;
+        REQUIRE(true == buffer.append_byte(data, data_size));
+        char output_head = *buffer.get_byte(1);
+        char output_checknum;
+        std::size_t output_vl_num = 0;
+        REQUIRE(true == buffer.get_checksum_and_variable_length((std::uint32_t &)output_vl_num, output_checknum));
+        REQUIRE(info.body_whole_length == output_vl_num);
+        char *output_body = buffer.get_byte(output_vl_num);
+        REQUIRE(nullptr != output_body);
+        REQUIRE(0 == buffer.get_data_size());
+        REQUIRE(nullptr == buffer.get_data());
+        byte_buffer_from_server byte_buffer;
+        int ret = byte_buffer.read_buffer_from_server(data, data_size);
+        std::shared_ptr<byte_buffer_from_server::citylife_protocol> cp_buffer = byte_buffer.front_and_pop();
+        REQUIRE(nullptr != cp_buffer.get());
+    }
+    SECTION("case3：两个协议") {
+        byte_buffer_from_server byte_buffer;
+        std::size_t protocol_data_size = 0;
+        {
+            test_protocol_factory::create_protocol_info info;
+            info.is_whole_protocol = true;
+            info.body_whole_length = 0;
+            char *data = nullptr;
+            std::size_t data_size = 0;
+            REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+            int ret = byte_buffer.read_buffer_from_server(data, data_size);
+        }
+        {
+            test_protocol_factory::create_protocol_info info;
+            info.is_whole_protocol = true;
+            info.body_whole_length = 6;
+            char *data = nullptr;
+            std::size_t data_size = 0;
+            REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+            int ret = byte_buffer.read_buffer_from_server(data, data_size);
+        }
+        int count = 0;
+        while (true) {
+            std::shared_ptr<byte_buffer_from_server::citylife_protocol> cp_buffer = byte_buffer.front_and_pop();
+            ++count;
+            if (1 == count) {
+                REQUIRE(nullptr != cp_buffer.get());
+            } else if (2 == count) {
+                REQUIRE(nullptr != cp_buffer.get());
+            } else if (3 == count) {
+                REQUIRE(nullptr == cp_buffer.get());
+                break;
+            }
+        }
+    }
+    SECTION("case4：单个不完整协议：只有head") {
+        test_protocol_factory::create_protocol_info info;
+        info.is_whole_protocol = true;
+        info.body_whole_length = 0;
+        char *data = nullptr;
+        std::size_t data_size = 0;
+        REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+        byte_buffer_from_server byte_buffer;
+        int ret = byte_buffer.read_buffer_from_server(data, 1);
+        REQUIRE(2 == ret);
+        ret = byte_buffer.read_buffer_from_server(data, data_size - 1);
+        REQUIRE(0 == ret);
+    }
+    SECTION("case5：单个不完整协议：只有head和checknum") {
+    }
+    SECTION("case6：单个不完整协议：只有head、checknum、和变长第一个字节（一共两个字节）") {
+    }
+    SECTION("case7：单个不完整协议：只有head、checknum、和变长完整字节") {
+    }
+    SECTION("case8：单个不完整协议：只有head、checknum、变长完整字节和部分协议体") {
+    }
+    SECTION("case9：单个协议，加上单个不完整协议：只有head、checknum、变长完整字节和部分协议体") {
+    }
+    SECTION("case10：错误协议：没有head") {
+    }
+    SECTION("case11：错误协议：没有checknum") {
+    }
+    SECTION("case12：错误协议：变长错误") {
+    }
+    SECTION("case13：错误协议：变长比协议体多") {
+    }
+    SECTION("case14：错误协议：变长比协议体少") {
+    }
+}
