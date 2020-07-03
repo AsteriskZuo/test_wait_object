@@ -610,6 +610,9 @@ public:
     std::shared_ptr<citylife_protocol> front_and_pop() {
         if (_cp_list.size()) {
             auto ret = _cp_list.front();
+            if (ret->cp_buffer_current_size != ret->cp_buffer_size) {
+                return nullptr;
+            }
             _cp_list.pop();
             return ret;
         }

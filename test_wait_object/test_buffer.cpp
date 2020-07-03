@@ -42,9 +42,11 @@ int byte_buffer_from_server::read_buffer_from_server(const char *data, const lon
             std::shared_ptr<citylife_protocol> cp_buf = this->back();
             if (nullptr == cp_buf) {
                 cp_buf = std::make_shared<citylife_protocol>();
+                this->push(cp_buf);
             }
             if (cp_buf->cp_buffer_current_size == cp_buf->cp_buffer_size && 0 != cp_buf->cp_buffer_current_size) {
                 cp_buf = std::make_shared<citylife_protocol>();
+                this->push(cp_buf);
             }
 
             if (0 == cp_buf->cp_buffer_current_size) {
@@ -115,7 +117,6 @@ int byte_buffer_from_server::read_buffer_from_server(const char *data, const lon
                         rds -= vl_byte_size;
                         if (0 == cp_buf->vl_num) {
                             // TODO: add one citylife_protocol
-                            this->push(cp_buf);
                             if (0 == rds) {
                                 break;
                             }
@@ -157,7 +158,6 @@ int byte_buffer_from_server::read_buffer_from_server(const char *data, const lon
                     rd += missing_data_size;
                     rds -= missing_data_size;
                     // TODO: add one citylife_protocol
-                    this->push(cp_buf);
                     if (0 == rds) {
                         break;
                     }

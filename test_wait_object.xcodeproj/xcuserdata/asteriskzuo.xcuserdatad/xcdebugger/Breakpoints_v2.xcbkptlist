@@ -3,4 +3,54 @@
    uuid = "D3AF729D-53EE-44A5-8C0E-53857F02666B"
    type = "1"
    version = "2.0">
+   <Breakpoints>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "BA3995E9-7009-4CB5-A7E9-C96C732C2B6B"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "test_wait_object/test_buffer_test.cpp"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "122"
+            endingLineNumber = "122"
+            landmarkName = "test_read_write_buffer_internal(head, checknum, id, name, binary_data)"
+            landmarkType = "9">
+            <Locations>
+               <Location
+                  uuid = "BA3995E9-7009-4CB5-A7E9-C96C732C2B6B - 3e1027933c59054f"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "test_read_write_buffer_internal(char, char, unsigned int&amp;, std::__1::basic_string&lt;char, std::__1::char_traits&lt;char&gt;, std::__1::allocator&lt;char&gt; &gt;&amp;, std::__1::basic_string&lt;char, std::__1::char_traits&lt;char&gt;, std::__1::allocator&lt;char&gt; &gt;&amp;)"
+                  moduleName = "test_unit"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/asteriskzuo/_github/test_wait_object/test_wait_object/test_buffer_test.cpp"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "122"
+                  endingLineNumber = "122"
+                  offsetFromSymbolStart = "2377">
+               </Location>
+               <Location
+                  uuid = "BA3995E9-7009-4CB5-A7E9-C96C732C2B6B - 3e1027933c59054f"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "test_read_write_buffer_internal(char, char, unsigned int&amp;, std::__1::basic_string&lt;char, std::__1::char_traits&lt;char&gt;, std::__1::allocator&lt;char&gt; &gt;&amp;, std::__1::basic_string&lt;char, std::__1::char_traits&lt;char&gt;, std::__1::allocator&lt;char&gt; &gt;&amp;)"
+                  moduleName = "test_unit"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/asteriskzuo/_github/test_wait_object/test_wait_object/test_buffer_test.cpp"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "122"
+                  endingLineNumber = "122"
+                  offsetFromSymbolStart = "2382">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+   </Breakpoints>
 </Bucket>

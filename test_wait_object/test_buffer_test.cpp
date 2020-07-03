@@ -499,7 +499,7 @@ public:
         int body_part_length;
     };
     struct create_error_protocol_info {
-        int error_format; //1.没有head 2.没有check 3.变长错误 4.协议体和变长不一致
+        int error_format; //1.没有head 2.没有check 3.变长错误 4.协议体和变长不一致:变长多 5.协议体和变长不一致:变长少
     };
 
 public:
@@ -646,6 +646,7 @@ TEST_CASE("test read buffer from server", "[byte_buffer]") {
         int ret = byte_buffer.read_buffer_from_server(data, data_size);
         std::shared_ptr<byte_buffer_from_server::citylife_protocol> cp_buffer = byte_buffer.front_and_pop();
         REQUIRE(nullptr != cp_buffer.get());
+        REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
     }
     SECTION("case2：单个协议：变长不为0") {
         test_protocol_factory::create_protocol_info info;
@@ -669,9 +670,12 @@ TEST_CASE("test read buffer from server", "[byte_buffer]") {
         int ret = byte_buffer.read_buffer_from_server(data, data_size);
         std::shared_ptr<byte_buffer_from_server::citylife_protocol> cp_buffer = byte_buffer.front_and_pop();
         REQUIRE(nullptr != cp_buffer.get());
+        REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
     }
     SECTION("case3：两个协议") {
         byte_buffer_from_server byte_buffer;
+        char *all_data = nullptr;
+        std::size_t all_data_size = 0;
         std::size_t protocol_data_size = 0;
         {
             test_protocol_factory::create_protocol_info info;
@@ -680,7 +684,9 @@ TEST_CASE("test read buffer from server", "[byte_buffer]") {
             char *data = nullptr;
             std::size_t data_size = 0;
             REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
-            int ret = byte_buffer.read_buffer_from_server(data, data_size);
+            all_data = new char[data_size];
+            all_data_size = data_size;
+            std::memcpy(all_data, data, data_size);
         }
         {
             test_protocol_factory::create_protocol_info info;
@@ -689,21 +695,31 @@ TEST_CASE("test read buffer from server", "[byte_buffer]") {
             char *data = nullptr;
             std::size_t data_size = 0;
             REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
-            int ret = byte_buffer.read_buffer_from_server(data, data_size);
+            char *temp_data = new char[data_size + all_data_size];
+            std::memcpy(temp_data, all_data, all_data_size);
+            std::memcpy(temp_data + all_data_size, data, data_size);
+            delete[] all_data;
+            all_data = temp_data;
+            all_data_size += data_size;
         }
+        int ret = byte_buffer.read_buffer_from_server(all_data, all_data_size);
         int count = 0;
         while (true) {
             std::shared_ptr<byte_buffer_from_server::citylife_protocol> cp_buffer = byte_buffer.front_and_pop();
             ++count;
             if (1 == count) {
                 REQUIRE(nullptr != cp_buffer.get());
+                REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
             } else if (2 == count) {
                 REQUIRE(nullptr != cp_buffer.get());
+                REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
             } else if (3 == count) {
                 REQUIRE(nullptr == cp_buffer.get());
+                REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
                 break;
             }
         }
+        delete[] all_data;
     }
     SECTION("case4：单个不完整协议：只有head") {
         test_protocol_factory::create_protocol_info info;
@@ -719,23 +735,166 @@ TEST_CASE("test read buffer from server", "[byte_buffer]") {
         REQUIRE(0 == ret);
     }
     SECTION("case5：单个不完整协议：只有head和checknum") {
+        test_protocol_factory::create_protocol_info info;
+        info.is_whole_protocol = true;
+        info.body_whole_length = 0;
+        char *data = nullptr;
+        std::size_t data_size = 0;
+        REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+        byte_buffer_from_server byte_buffer;
+        int ret = byte_buffer.read_buffer_from_server(data, 2);
+        REQUIRE(2 == ret);
+        ret = byte_buffer.read_buffer_from_server(data, data_size - 2);
+        REQUIRE(0 == ret);
     }
     SECTION("case6：单个不完整协议：只有head、checknum、和变长第一个字节（一共两个字节）") {
+        test_protocol_factory::create_protocol_info info;
+        info.is_whole_protocol = true;
+        info.body_whole_length = 450;
+        char *data = nullptr;
+        std::size_t data_size = 0;
+        REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+        byte_buffer_from_server byte_buffer;
+        int ret = byte_buffer.read_buffer_from_server(data, 3);
+        REQUIRE(2 == ret);
+        ret = byte_buffer.read_buffer_from_server(data, data_size - 3);
+        REQUIRE(0 == ret);
     }
     SECTION("case7：单个不完整协议：只有head、checknum、和变长完整字节") {
+        test_protocol_factory::create_protocol_info info;
+        info.is_whole_protocol = true;
+        info.body_whole_length = 450;
+        char *data = nullptr;
+        std::size_t data_size = 0;
+        REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+        byte_buffer_from_server byte_buffer;
+        int ret = byte_buffer.read_buffer_from_server(data, 4);
+        REQUIRE(2 == ret);
+        ret = byte_buffer.read_buffer_from_server(data, data_size - 4);
+        REQUIRE(0 == ret);
     }
     SECTION("case8：单个不完整协议：只有head、checknum、变长完整字节和部分协议体") {
+        {
+            test_protocol_factory::create_protocol_info info;
+            info.is_whole_protocol = true;
+            info.body_whole_length = 450;
+            char *data = nullptr;
+            std::size_t data_size = 0;
+            REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+            byte_buffer_from_server byte_buffer;
+            int ret = byte_buffer.read_buffer_from_server(data, 5);
+            REQUIRE(2 == ret);
+            ret = byte_buffer.read_buffer_from_server(data, data_size - 5);
+            REQUIRE(0 == ret);
+        }
+        {
+            test_protocol_factory::create_protocol_info info;
+            info.is_whole_protocol = true;
+            info.body_whole_length = 450;
+            char *data = nullptr;
+            std::size_t data_size = 0;
+            REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+            byte_buffer_from_server byte_buffer;
+            int ret = byte_buffer.read_buffer_from_server(data, data_size - 1);
+            REQUIRE(2 == ret);
+            ret = byte_buffer.read_buffer_from_server(data, 1);
+            REQUIRE(0 == ret);
+        }
     }
     SECTION("case9：单个协议，加上单个不完整协议：只有head、checknum、变长完整字节和部分协议体") {
+        byte_buffer_from_server byte_buffer;
+        char *all_data = nullptr;
+        std::size_t all_data_size = 0;
+        std::size_t protocol_data_size = 0;
+        {
+            test_protocol_factory::create_protocol_info info;
+            info.is_whole_protocol = true;
+            info.body_whole_length = 0;
+            char *data = nullptr;
+            std::size_t data_size = 0;
+            REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+            all_data = new char[data_size];
+            all_data_size = data_size;
+            std::memcpy(all_data, data, data_size);
+        }
+        {
+            test_protocol_factory::create_protocol_info info;
+            info.is_whole_protocol = true;
+            info.body_whole_length = 450;
+            char *data = nullptr;
+            std::size_t data_size = 0;
+            REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+            char *temp_data = new char[data_size + all_data_size];
+            std::memcpy(temp_data, all_data, all_data_size);
+            std::memcpy(temp_data + all_data_size, data, data_size);
+            delete[] all_data;
+            all_data = temp_data;
+            all_data_size += data_size;
+        }
+        int ret = byte_buffer.read_buffer_from_server(all_data, 6);
+        int count = 0;
+        while (true) {
+            std::shared_ptr<byte_buffer_from_server::citylife_protocol> cp_buffer = byte_buffer.front_and_pop();
+            ++count;
+            if (1 == count) {
+                REQUIRE(nullptr != cp_buffer.get());
+                REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
+            } else if (2 == count) {
+                REQUIRE(nullptr == cp_buffer.get());
+                REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
+                break;
+            }
+        }
+        delete[] all_data;
     }
     SECTION("case10：错误协议：没有head") {
+        test_protocol_factory::create_error_protocol_info info;
+        info.error_format = 1;
+        char *data = nullptr;
+        std::size_t data_size = 0;
+        REQUIRE(true == test_protocol_factory::create_error_buffer_from_message(info, data, data_size));
+        byte_buffer_from_server byte_buffer;
+        REQUIRE(1 == byte_buffer.read_buffer_from_server(data, data_size));
+        REQUIRE(nullptr == byte_buffer.front_and_pop());
     }
     SECTION("case11：错误协议：没有checknum") {
+        test_protocol_factory::create_error_protocol_info info;
+        info.error_format = 2;
+        char *data = nullptr;
+        std::size_t data_size = 0;
+        REQUIRE(true == test_protocol_factory::create_error_buffer_from_message(info, data, data_size));
+        byte_buffer_from_server byte_buffer;
+        REQUIRE(1 == byte_buffer.read_buffer_from_server(data, data_size));
+        REQUIRE(nullptr == byte_buffer.front_and_pop());
     }
     SECTION("case12：错误协议：变长错误") {
+        test_protocol_factory::create_error_protocol_info info;
+        info.error_format = 3;
+        char *data = nullptr;
+        std::size_t data_size = 0;
+        REQUIRE(true == test_protocol_factory::create_error_buffer_from_message(info, data, data_size));
+        byte_buffer_from_server byte_buffer;
+        REQUIRE(1 == byte_buffer.read_buffer_from_server(data, data_size));
+        REQUIRE(nullptr == byte_buffer.front_and_pop());
     }
     SECTION("case13：错误协议：变长比协议体多") {
+        test_protocol_factory::create_error_protocol_info info;
+        info.error_format = 4;
+        char *data = nullptr;
+        std::size_t data_size = 0;
+        REQUIRE(true == test_protocol_factory::create_error_buffer_from_message(info, data, data_size));
+        byte_buffer_from_server byte_buffer;
+        REQUIRE(1 == byte_buffer.read_buffer_from_server(data, data_size));
+        REQUIRE(nullptr == byte_buffer.front_and_pop());
     }
     SECTION("case14：错误协议：变长比协议体少") {
+        test_protocol_factory::create_error_protocol_info info;
+        info.error_format = 5;
+        char *data = nullptr;
+        std::size_t data_size = 0;
+        REQUIRE(true == test_protocol_factory::create_error_buffer_from_message(info, data, data_size));
+        byte_buffer_from_server byte_buffer;
+        REQUIRE(1 == byte_buffer.read_buffer_from_server(data, data_size));
+        REQUIRE(nullptr == byte_buffer.front_and_pop());
     }
 }
