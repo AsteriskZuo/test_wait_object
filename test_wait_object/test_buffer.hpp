@@ -198,21 +198,17 @@ protected:
 
 public:
     data_buffer() : data_(nullptr), data_size_(0) {
-        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int *>(this) << std::endl;
         data_ = basic_buffer_t::buffer();
     }
     virtual ~data_buffer() {
-        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int *>(this) << std::endl;
         data_ = nullptr;
         data_size_ = 0;
     }
     data_buffer(data_buffer &&o) : basic_buffer_t(dynamic_cast<basic_buffer_t &&>(o)) {
-        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int *>(this) << std::endl;
         this->swap(o);
         data_buffer(true).swap(o);
     }
     data_buffer &operator=(data_buffer &&o) {
-        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int *>(this) << std::endl;
         basic_buffer_t::operator=(dynamic_cast<basic_buffer_t &&>(o));
         if (this != &o) {
             this->swap(o);
@@ -221,7 +217,6 @@ public:
         return *this;
     }
     data_buffer(bool is_temp_obj) : basic_buffer_t(is_temp_obj) {
-        std::cout << __func__ << ":" << __LINE__ << ":" << reinterpret_cast<int *>(this) << std::endl;
         // to do nothing
     }
 
@@ -282,10 +277,10 @@ public:
         std::cout << std::endl;
     }
     template <typename number_t>
-    static std::size_t test_get_num_length(const number_t) {
+    static std::size_t get_number_length(const number_t) {
         return sizeof(number_t);
     }
-    static std::size_t test_get_string_length(const std::string &str) {
+    static std::size_t get_string_length(const std::string &str) {
         return str.size() + 2; //std::uint16_t
     }
 };
@@ -379,6 +374,9 @@ public:
             data_size = request_data_size;
             data_buffer_t::data_ = +data_size;
             data_buffer_t::data_size_ -= data_size;
+            if (0 == data_buffer_t::data_size_) {
+                data_buffer_t::data_ = nullptr;
+            }
             ret = true;
         } while (false);
         return ret;
@@ -435,6 +433,9 @@ public:
             ret = data_buffer_t::data_;
             data_buffer_t::data_ += request_size;
             data_buffer_t::data_size_ -= request_size;
+            if (0 == data_buffer_t::data_size_) {
+                data_buffer_t::data_ = nullptr;
+            }
         }
         return ret;
     }
@@ -491,6 +492,9 @@ public:
             std::memcpy(vl_byte, data_buffer_t::data_, vl_byte_size);
             data_buffer_t::data_ += vl_byte_size;
             data_buffer_t::data_size_ -= vl_byte_size;
+            if (0 == data_buffer_t::data_size_) {
+                data_buffer_t::data_ = nullptr;
+            }
             if (!get_checksum_and_variable_length(vl_byte, vl_byte_size, checksum_org, vl_num)) {
                 break;
             }
@@ -583,9 +587,9 @@ public:
 
 class byte_buffer_from_server final {
 public:
-    struct citylife_protocol {
-        citylife_protocol() : cp_buffer(std::make_shared<read_buffer<char>>()), cp_buffer_size(0), cp_buffer_current_size(0), head(0), checknum(0), vl_num(0), vl_byte_size(0) {}
-        ~citylife_protocol() {}
+    struct citylife_im_protocol {
+        citylife_im_protocol() : cp_buffer(std::make_shared<read_buffer<char>>()), cp_buffer_size(0), cp_buffer_current_size(0), head(0), checknum(0), vl_num(0), vl_byte_size(0) {}
+        ~citylife_im_protocol() {}
         std::shared_ptr<read_buffer<char>> cp_buffer;
         std::size_t cp_buffer_size;
         std::size_t cp_buffer_current_size;
@@ -596,7 +600,7 @@ public:
     };
 
 private:
-    std::queue<std::shared_ptr<citylife_protocol>> _cp_list;
+    std::queue<std::shared_ptr<citylife_im_protocol>> _cp_list;
     char _org_buffer[READ_BYTE_BUFFER_MAX_SIZE];
 
 public:
@@ -604,10 +608,10 @@ public:
     ~byte_buffer_from_server() {}
 
 public:
-    void push(const std::shared_ptr<citylife_protocol> cp) {
+    void push(const std::shared_ptr<citylife_im_protocol> cp) {
         _cp_list.push(cp);
     }
-    std::shared_ptr<citylife_protocol> front_and_pop() {
+    std::shared_ptr<citylife_im_protocol> front_and_pop() {
         if (_cp_list.size()) {
             auto ret = _cp_list.front();
             if (ret->cp_buffer_current_size != ret->cp_buffer_size) {
@@ -618,7 +622,7 @@ public:
         }
         return nullptr;
     }
-    std::shared_ptr<citylife_protocol> back() {
+    std::shared_ptr<citylife_im_protocol> back() {
         if (_cp_list.size()) {
             auto ret = _cp_list.back();
             return ret;

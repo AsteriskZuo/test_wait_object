@@ -53,7 +53,7 @@ TEST_CASE("convert num", "[byte_order_convert]") {
 
 static void test_read_write_buffer_internal(char head, char checknum, std::uint32_t &id, std::string &name, std::string &binary_data) {
     std::size_t binary_data_size = binary_data.size();
-    std::uint32_t vl = data_buffer<char>::test_get_num_length(id) + data_buffer<char>::test_get_string_length(name) + binary_data_size;
+    std::uint32_t vl = data_buffer<char>::get_number_length(id) + data_buffer<char>::get_string_length(name) + binary_data_size;
     bool ret = false;
     do {
 
@@ -122,7 +122,7 @@ static void test_read_write_buffer_internal(char head, char checknum, std::uint3
         REQUIRE(vl == out_vl);
         REQUIRE(id == out_id);
         REQUIRE(name == out_name);
-        REQUIRE(out_vl == (data_buffer<char>::test_get_num_length(out_id) + data_buffer<char>::test_get_string_length(name) + test_out_binary_data.size()));
+        REQUIRE(out_vl == (data_buffer<char>::get_number_length(out_id) + data_buffer<char>::get_string_length(name) + test_out_binary_data.size()));
         REQUIRE(binary_data_size == test_out_binary_data.size());
 
     } while (false);
@@ -343,7 +343,7 @@ TEST_CASE("test add large data", "[final_buffer]") {
  * 从服务器接收消息：拆包、粘包测试
  * case1：单个协议：变长为0
  * case2：单个协议：变长不为0
- * case3：两个协议
+ * case3：两个协议：1.协议体为0+协议不为0 2.协议不为0+协议为0
  * case4：单个不完整协议：只有head
  * case5：单个不完整协议：只有head和checknum
  * case6：单个不完整协议：只有head、checknum、和变长第一个字节（一共两个字节）
@@ -358,6 +358,15 @@ TEST_CASE("test add large data", "[final_buffer]") {
  * case15：变长解析：变长需要2个字节，但是只给1个字节
  * case16：变长解析：变长需要3个字节，但是只给1个字节
  * case17：变长解析：变长需要3个字节，但是只给2个字节
+ * case18：单个协议：一个一个字节的接收和解析
+ * case19：单个协议：2个2个字节的接收和解析
+ * case20：错误协议：没有head
+ * case21：错误协议：没有checknum
+ * case22：错误协议：变长错误
+ * case23：错误协议：变长比协议体多
+ * case24：错误协议：变长比协议体少
+ * case25：单个协议（没有协议体） + 错误协议（没有head）
+ * case25：错误协议（没有head）+ 单个协议（没有协议体）
  */
 
 TEST_CASE("test variable length", "[data_buffer]") {
@@ -376,6 +385,7 @@ TEST_CASE("test variable length", "[data_buffer]") {
         std::size_t output_vl_byte_size = 0;
         int output_ret2 = read_buffer<char>::peek_variable_length(vl_byte, vl_byte_size, output_vl_byte_size);
         REQUIRE(0 == output_ret2);
+        REQUIRE(1 == output_vl_byte_size);
     }
     SECTION("case11：变长解析：2个字节的变长") {
         std::uint32_t vl_num = 2445;
@@ -392,6 +402,7 @@ TEST_CASE("test variable length", "[data_buffer]") {
         std::size_t output_vl_byte_size = 0;
         int output_ret2 = read_buffer<char>::peek_variable_length(vl_byte, vl_byte_size, output_vl_byte_size);
         REQUIRE(0 == output_ret2);
+        REQUIRE(2 == output_vl_byte_size);
     }
     SECTION("case12：变长解析：3个字节的变长") {
         std::uint32_t vl_num = 22644;
@@ -408,6 +419,7 @@ TEST_CASE("test variable length", "[data_buffer]") {
         std::size_t output_vl_byte_size = 0;
         int output_ret2 = read_buffer<char>::peek_variable_length(vl_byte, vl_byte_size, output_vl_byte_size);
         REQUIRE(0 == output_ret2);
+        REQUIRE(3 == output_vl_byte_size);
     }
     SECTION("case13：变长解析：4个字节的变长") {
         std::uint32_t vl_num = 725972140;
@@ -428,6 +440,22 @@ TEST_CASE("test variable length", "[data_buffer]") {
         REQUIRE(1 == output_ret2);
     }
     SECTION("case14：变长解析：变长字节不符合规范") {
+        std::uint32_t vl_num = 725972140;
+        char vl_byte[4] = {0};
+        std::size_t vl_byte_size = 0;
+        char code = (char)0x00;
+        bool input_ret = write_buffer<char>::get_checksum_and_variable_length(vl_num, vl_byte, vl_byte_size, code);
+
+        char output_checknum = (char)0x00;
+        std::uint32_t output_vl_num = 0;
+        vl_byte_size = 3; // for test
+        bool output_ret = read_buffer<char>::get_checksum_and_variable_length(vl_byte, vl_byte_size, output_checknum, output_vl_num);
+        REQUIRE(false == input_ret);
+        REQUIRE(false == output_ret);
+
+        std::size_t output_vl_byte_size = 0;
+        int output_ret2 = read_buffer<char>::peek_variable_length(vl_byte, vl_byte_size, output_vl_byte_size);
+        REQUIRE(1 == output_ret2);
     }
     SECTION("case15：变长解析：变长需要2个字节，但是只给1个字节") {
         std::uint32_t vl_num = 2445;
@@ -486,17 +514,17 @@ class test_protocol_factory {
 public:
     struct create_protocol_info {
         bool is_whole_protocol; //true = yes false = no
-
-        int is_exist_head;     // 0.not exist 1.exit part
-        int is_exist_checksum; // 0.not exist 1.exit part
-
-        int is_exist_vl; // 0.not exist 1.exit part 2.exit whole
-        int vl_whole_length;
-        int vl_part_length;
-
-        int is_exist_body; // 0.not exist 1.exit part 2.exit whole
+                                //
+                                //        int is_exist_head;     // 0.not exist 1.exit part
+                                //        int is_exist_checksum; // 0.not exist 1.exit part
+                                //
+                                //        int is_exist_vl; // 0.not exist 1.exit part 2.exit whole
+                                //        int vl_whole_length;
+                                //        int vl_part_length;
+                                //
+                                //        int is_exist_body; // 0.not exist 1.exit part 2.exit whole
         int body_whole_length;
-        int body_part_length;
+        //        int body_part_length;
     };
     struct create_error_protocol_info {
         int error_format; //1.没有head 2.没有check 3.变长错误 4.协议体和变长不一致:变长多 5.协议体和变长不一致:变长少
@@ -513,7 +541,7 @@ public:
      * @param out_data_size 协议流长度
      * @return bool 是否创建成功 true.成功
      */
-    static bool create_buffer_from_message(const create_protocol_info &info, char *out_data, std::size_t &out_data_size) {
+    static bool create_buffer_from_message(const create_protocol_info &info, char *&out_data, std::size_t &out_data_size) {
         bool ret = false;
         do {
             if (info.is_whole_protocol) {
@@ -537,7 +565,7 @@ public:
                         }
                         body_whole_length = tmp;
                     }
-                    std::string body_whole_length_num = std::to_string(body_whole_length);
+                    std::string body_whole_length_num = std::to_string(info.body_whole_length);
                     std::string body = body_whole_length_num;
                     body.append(std::string(info.body_whole_length - 2 * body_whole_length_digit, 'b'));
                     body.append(body_whole_length_num);
@@ -567,59 +595,69 @@ public:
      * @return true 创建成功
      * @return false 创建失败
      */
-    static bool create_error_buffer_from_message(const create_error_protocol_info &info, char *out_data, std::size_t &out_data_size) {
+    static bool create_error_buffer_from_message(const create_error_protocol_info &info, char *&out_data, std::size_t &out_data_size) {
         bool ret = false;
         do {
             write_buffer<char> buffer;
+            char *buffer_data = nullptr;
+            std::size_t buffer_data_size = 0;
             if (1 == info.error_format) {
                 char head = 64; //4
                 const char *body = "123456";
-                buffer.append_checksum_and_variable_length(strlen(body), 0);
+                buffer.append_byte((const char *)&head, 1);
+                buffer.append_checksum_and_variable_length((std::uint32_t)strlen(body), 0);
                 buffer.append_byte(body, strlen(body));
+                int _ret = buffer.get_all_byte(buffer_data, buffer_data_size);
+                buffer_data += 1;
+                buffer_data_size -= 1;
             } else if (2 == info.error_format) {
                 char head = 64; //4
                 std::string body = std::string(6, 'b');
-                buffer.append_checksum_and_variable_length(body.size(), head);
-                char output[4] = {0};
-                std::size_t output_size = 0;
-                buffer.get_all_byte((char *&)output, output_size);
+                buffer.append_byte((const char *)&head, 1);
+                buffer.append_checksum_and_variable_length((std::uint32_t)body.size(), head);
+                int _ret = buffer.get_all_byte(buffer_data, buffer_data_size);
+                buffer_data += 2;
+                buffer_data_size -= 2;
                 buffer.append_byte(&head, 1);
-                buffer.append_byte(output + 1, output_size - 1);
-                buffer.append_byte(body.c_str(), body.size());
+                buffer.append_byte(buffer_data, buffer_data_size);
+                buffer.append_byte(body.data(), body.size());
+                _ret = buffer.get_all_byte(buffer_data, buffer_data_size);
             } else if (3 == info.error_format) {
                 char head = 64; //4
                 std::string body = std::string(450, 'b');
-                buffer.append_checksum_and_variable_length(body.size(), head);
-                char output[4] = {0};
-                std::size_t output_size = 0;
-                buffer.get_all_byte((char *&)output, output_size);
-                buffer.append_byte(&head, 1);
-                buffer.append_byte(output, output_size - 1);
-                buffer.append_byte(body.c_str(), body.size());
+                buffer.append_byte((const char *)&head, 1);
+                buffer.append_checksum_and_variable_length((std::uint32_t)body.size(), head);
+                int _ret = buffer.get_all_byte(buffer_data, buffer_data_size);
+                buffer.append_byte(buffer_data, 3);
+                buffer.append_byte(body.data(), body.size());
+                _ret = buffer.get_all_byte(buffer_data, buffer_data_size);
             } else if (4 == info.error_format) {
                 char head = 64; //4
-                std::string body = std::string(450, 'b');
-                buffer.append_checksum_and_variable_length(body.size(), head);
-                char output[4] = {0};
-                std::size_t output_size = 0;
-                buffer.get_all_byte((char *&)output, output_size);
-                buffer.append_byte(&head, 1);
-                buffer.append_byte(output, output_size);
+                std::string body = std::string(88, 'b');
+                buffer.append_byte((const char *)&head, 1);
+                buffer.append_checksum_and_variable_length((std::uint32_t)body.size(), head);
+                int _ret = buffer.get_all_byte(buffer_data, buffer_data_size);
+                buffer.append_byte(buffer_data, buffer_data_size);
                 body = body.substr(10);
-                buffer.append_byte(body.c_str(), body.size());
+                buffer.append_byte(body.data(), body.size());
+                _ret = buffer.get_all_byte(buffer_data, buffer_data_size);
             } else if (5 == info.error_format) {
                 char head = 64; //4
-                std::string body = std::string(450, 'b');
-                buffer.append_checksum_and_variable_length(body.size(), head);
-                char output[4] = {0};
-                std::size_t output_size = 0;
-                buffer.get_all_byte((char *&)output, output_size);
-                buffer.append_byte(&head, 1);
-                buffer.append_byte(output, output_size);
-                body.append(std::string("extra"));
-                buffer.append_byte(body.c_str(), body.size());
+                std::string body = std::string(88, 'b');
+                buffer.append_byte((const char *)&head, 1);
+                buffer.append_checksum_and_variable_length((std::uint32_t)body.size(), head);
+                int _ret = buffer.get_all_byte(buffer_data, buffer_data_size);
+                buffer.append_byte(buffer_data, buffer_data_size);
+                body.append(std::string(6, 'c'));
+                buffer.append_byte(body.data(), body.size());
+                _ret = buffer.get_all_byte(buffer_data, buffer_data_size);
+            } else {
+                break;
             }
-
+            out_data = new char[buffer_data_size];
+            out_data_size = buffer_data_size;
+            std::memcpy(out_data, buffer_data, buffer_data_size);
+            ret = true;
         } while (false);
         return ret;
     }
@@ -644,7 +682,7 @@ TEST_CASE("test read buffer from server", "[byte_buffer]") {
         REQUIRE(nullptr == buffer.get_data());
         byte_buffer_from_server byte_buffer;
         int ret = byte_buffer.read_buffer_from_server(data, data_size);
-        std::shared_ptr<byte_buffer_from_server::citylife_protocol> cp_buffer = byte_buffer.front_and_pop();
+        std::shared_ptr<byte_buffer_from_server::citylife_im_protocol> cp_buffer = byte_buffer.front_and_pop();
         REQUIRE(nullptr != cp_buffer.get());
         REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
     }
@@ -668,58 +706,107 @@ TEST_CASE("test read buffer from server", "[byte_buffer]") {
         REQUIRE(nullptr == buffer.get_data());
         byte_buffer_from_server byte_buffer;
         int ret = byte_buffer.read_buffer_from_server(data, data_size);
-        std::shared_ptr<byte_buffer_from_server::citylife_protocol> cp_buffer = byte_buffer.front_and_pop();
+        std::shared_ptr<byte_buffer_from_server::citylife_im_protocol> cp_buffer = byte_buffer.front_and_pop();
         REQUIRE(nullptr != cp_buffer.get());
         REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
     }
     SECTION("case3：两个协议") {
-        byte_buffer_from_server byte_buffer;
-        char *all_data = nullptr;
-        std::size_t all_data_size = 0;
-        std::size_t protocol_data_size = 0;
         {
-            test_protocol_factory::create_protocol_info info;
-            info.is_whole_protocol = true;
-            info.body_whole_length = 0;
-            char *data = nullptr;
-            std::size_t data_size = 0;
-            REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
-            all_data = new char[data_size];
-            all_data_size = data_size;
-            std::memcpy(all_data, data, data_size);
-        }
-        {
-            test_protocol_factory::create_protocol_info info;
-            info.is_whole_protocol = true;
-            info.body_whole_length = 6;
-            char *data = nullptr;
-            std::size_t data_size = 0;
-            REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
-            char *temp_data = new char[data_size + all_data_size];
-            std::memcpy(temp_data, all_data, all_data_size);
-            std::memcpy(temp_data + all_data_size, data, data_size);
-            delete[] all_data;
-            all_data = temp_data;
-            all_data_size += data_size;
-        }
-        int ret = byte_buffer.read_buffer_from_server(all_data, all_data_size);
-        int count = 0;
-        while (true) {
-            std::shared_ptr<byte_buffer_from_server::citylife_protocol> cp_buffer = byte_buffer.front_and_pop();
-            ++count;
-            if (1 == count) {
-                REQUIRE(nullptr != cp_buffer.get());
-                REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
-            } else if (2 == count) {
-                REQUIRE(nullptr != cp_buffer.get());
-                REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
-            } else if (3 == count) {
-                REQUIRE(nullptr == cp_buffer.get());
-                REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
-                break;
+            byte_buffer_from_server byte_buffer;
+            char *all_data = nullptr;
+            std::size_t all_data_size = 0;
+            std::size_t protocol_data_size = 0;
+            {
+                test_protocol_factory::create_protocol_info info;
+                info.is_whole_protocol = true;
+                info.body_whole_length = 0;
+                char *data = nullptr;
+                std::size_t data_size = 0;
+                REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+                all_data = new char[data_size];
+                all_data_size = data_size;
+                std::memcpy(all_data, data, data_size);
             }
+            {
+                test_protocol_factory::create_protocol_info info;
+                info.is_whole_protocol = true;
+                info.body_whole_length = 6;
+                char *data = nullptr;
+                std::size_t data_size = 0;
+                REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+                char *temp_data = new char[data_size + all_data_size];
+                std::memcpy(temp_data, all_data, all_data_size);
+                std::memcpy(temp_data + all_data_size, data, data_size);
+                delete[] all_data;
+                all_data = temp_data;
+                all_data_size += data_size;
+            }
+            int ret = byte_buffer.read_buffer_from_server(all_data, all_data_size);
+            int count = 0;
+            while (true) {
+                std::shared_ptr<byte_buffer_from_server::citylife_im_protocol> cp_buffer = byte_buffer.front_and_pop();
+                ++count;
+                if (1 == count) {
+                    REQUIRE(nullptr != cp_buffer.get());
+                    REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
+                } else if (2 == count) {
+                    REQUIRE(nullptr != cp_buffer.get());
+                    REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
+                } else if (3 == count) {
+                    REQUIRE(nullptr == cp_buffer.get());
+                    break;
+                }
+            }
+            delete[] all_data;
         }
-        delete[] all_data;
+        {
+            byte_buffer_from_server byte_buffer;
+            char *all_data = nullptr;
+            std::size_t all_data_size = 0;
+            std::size_t protocol_data_size = 0;
+            {
+                test_protocol_factory::create_protocol_info info;
+                info.is_whole_protocol = true;
+                info.body_whole_length = 6;
+                char *data = nullptr;
+                std::size_t data_size = 0;
+                REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+                all_data = new char[data_size];
+                all_data_size = data_size;
+                std::memcpy(all_data, data, data_size);
+            }
+            {
+                test_protocol_factory::create_protocol_info info;
+                info.is_whole_protocol = true;
+                info.body_whole_length = 0;
+                char *data = nullptr;
+                std::size_t data_size = 0;
+                REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+                char *temp_data = new char[data_size + all_data_size];
+                std::memcpy(temp_data, all_data, all_data_size);
+                std::memcpy(temp_data + all_data_size, data, data_size);
+                delete[] all_data;
+                all_data = temp_data;
+                all_data_size += data_size;
+            }
+            int ret = byte_buffer.read_buffer_from_server(all_data, all_data_size);
+            int count = 0;
+            while (true) {
+                std::shared_ptr<byte_buffer_from_server::citylife_im_protocol> cp_buffer = byte_buffer.front_and_pop();
+                ++count;
+                if (1 == count) {
+                    REQUIRE(nullptr != cp_buffer.get());
+                    REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
+                } else if (2 == count) {
+                    REQUIRE(nullptr != cp_buffer.get());
+                    REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
+                } else if (3 == count) {
+                    REQUIRE(nullptr == cp_buffer.get());
+                    break;
+                }
+            }
+            delete[] all_data;
+        }
     }
     SECTION("case4：单个不完整协议：只有head") {
         test_protocol_factory::create_protocol_info info;
@@ -731,7 +818,7 @@ TEST_CASE("test read buffer from server", "[byte_buffer]") {
         byte_buffer_from_server byte_buffer;
         int ret = byte_buffer.read_buffer_from_server(data, 1);
         REQUIRE(2 == ret);
-        ret = byte_buffer.read_buffer_from_server(data, data_size - 1);
+        ret = byte_buffer.read_buffer_from_server(data + 1, data_size - 1);
         REQUIRE(0 == ret);
     }
     SECTION("case5：单个不完整协议：只有head和checknum") {
@@ -744,7 +831,7 @@ TEST_CASE("test read buffer from server", "[byte_buffer]") {
         byte_buffer_from_server byte_buffer;
         int ret = byte_buffer.read_buffer_from_server(data, 2);
         REQUIRE(2 == ret);
-        ret = byte_buffer.read_buffer_from_server(data, data_size - 2);
+        ret = byte_buffer.read_buffer_from_server(data + 2, data_size - 2);
         REQUIRE(0 == ret);
     }
     SECTION("case6：单个不完整协议：只有head、checknum、和变长第一个字节（一共两个字节）") {
@@ -757,7 +844,7 @@ TEST_CASE("test read buffer from server", "[byte_buffer]") {
         byte_buffer_from_server byte_buffer;
         int ret = byte_buffer.read_buffer_from_server(data, 3);
         REQUIRE(2 == ret);
-        ret = byte_buffer.read_buffer_from_server(data, data_size - 3);
+        ret = byte_buffer.read_buffer_from_server(data + 3, data_size - 3);
         REQUIRE(0 == ret);
     }
     SECTION("case7：单个不完整协议：只有head、checknum、和变长完整字节") {
@@ -770,7 +857,7 @@ TEST_CASE("test read buffer from server", "[byte_buffer]") {
         byte_buffer_from_server byte_buffer;
         int ret = byte_buffer.read_buffer_from_server(data, 4);
         REQUIRE(2 == ret);
-        ret = byte_buffer.read_buffer_from_server(data, data_size - 4);
+        ret = byte_buffer.read_buffer_from_server(data + 4, data_size - 4);
         REQUIRE(0 == ret);
     }
     SECTION("case8：单个不完整协议：只有head、checknum、变长完整字节和部分协议体") {
@@ -784,7 +871,7 @@ TEST_CASE("test read buffer from server", "[byte_buffer]") {
             byte_buffer_from_server byte_buffer;
             int ret = byte_buffer.read_buffer_from_server(data, 5);
             REQUIRE(2 == ret);
-            ret = byte_buffer.read_buffer_from_server(data, data_size - 5);
+            ret = byte_buffer.read_buffer_from_server(data + 5, data_size - 5);
             REQUIRE(0 == ret);
         }
         {
@@ -797,7 +884,7 @@ TEST_CASE("test read buffer from server", "[byte_buffer]") {
             byte_buffer_from_server byte_buffer;
             int ret = byte_buffer.read_buffer_from_server(data, data_size - 1);
             REQUIRE(2 == ret);
-            ret = byte_buffer.read_buffer_from_server(data, 1);
+            ret = byte_buffer.read_buffer_from_server(data + data_size - 1, 1);
             REQUIRE(0 == ret);
         }
     }
@@ -834,20 +921,65 @@ TEST_CASE("test read buffer from server", "[byte_buffer]") {
         int ret = byte_buffer.read_buffer_from_server(all_data, 6);
         int count = 0;
         while (true) {
-            std::shared_ptr<byte_buffer_from_server::citylife_protocol> cp_buffer = byte_buffer.front_and_pop();
+            std::shared_ptr<byte_buffer_from_server::citylife_im_protocol> cp_buffer = byte_buffer.front_and_pop();
             ++count;
             if (1 == count) {
                 REQUIRE(nullptr != cp_buffer.get());
                 REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
             } else if (2 == count) {
                 REQUIRE(nullptr == cp_buffer.get());
-                REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
                 break;
             }
         }
         delete[] all_data;
     }
-    SECTION("case10：错误协议：没有head") {
+    SECTION("case18：单个协议：一个一个字节的接收和解析") {
+        test_protocol_factory::create_protocol_info info;
+        info.is_whole_protocol = true;
+        info.body_whole_length = 450;
+        char *data = nullptr;
+        std::size_t data_size = 0;
+        REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+        byte_buffer_from_server byte_buffer;
+        int ret = byte_buffer.read_buffer_from_server(data, 1); // head
+        REQUIRE(2 == ret);
+        ret = byte_buffer.read_buffer_from_server(data + 1, 1); // checksum
+        REQUIRE(2 == ret);
+        ret = byte_buffer.read_buffer_from_server(data + 2, 1); // vl first byte
+        REQUIRE(2 == ret);
+        ret = byte_buffer.read_buffer_from_server(data + 3, 1); // vl second byte
+        REQUIRE(2 == ret);
+        ret = byte_buffer.read_buffer_from_server(data + 4, 1); // vl first body byte
+        REQUIRE(2 == ret);
+        ret = byte_buffer.read_buffer_from_server(data + 5, data_size - 5); // vl remaining body byte
+        REQUIRE(0 == ret);
+        std::shared_ptr<byte_buffer_from_server::citylife_im_protocol> cp_buffer = byte_buffer.front_and_pop();
+        REQUIRE(nullptr != cp_buffer.get());
+        REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
+        REQUIRE(info.body_whole_length + 2 + 2 == cp_buffer->cp_buffer_size);
+    }
+    SECTION("case19：单个协议：2个2个字节的接收和解析") {
+        test_protocol_factory::create_protocol_info info;
+        info.is_whole_protocol = true;
+        info.body_whole_length = 450;
+        char *data = nullptr;
+        std::size_t data_size = 0;
+        REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+        byte_buffer_from_server byte_buffer;
+        int ret = byte_buffer.read_buffer_from_server(data, 2); // head + checksum
+        REQUIRE(2 == ret);
+        ret = byte_buffer.read_buffer_from_server(data + 2, 2); // vl two byte
+        REQUIRE(2 == ret);
+        ret = byte_buffer.read_buffer_from_server(data + 4, 2); // body frist bytes
+        REQUIRE(2 == ret);
+        ret = byte_buffer.read_buffer_from_server(data + 6, data_size - 6); // body remaining bytes
+        REQUIRE(0 == ret);
+        std::shared_ptr<byte_buffer_from_server::citylife_im_protocol> cp_buffer = byte_buffer.front_and_pop();
+        REQUIRE(nullptr != cp_buffer.get());
+        REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
+        REQUIRE(info.body_whole_length + 2 + 2 == cp_buffer->cp_buffer_size);
+    }
+    SECTION("case20：错误协议：没有head") {
         test_protocol_factory::create_error_protocol_info info;
         info.error_format = 1;
         char *data = nullptr;
@@ -857,7 +989,7 @@ TEST_CASE("test read buffer from server", "[byte_buffer]") {
         REQUIRE(1 == byte_buffer.read_buffer_from_server(data, data_size));
         REQUIRE(nullptr == byte_buffer.front_and_pop());
     }
-    SECTION("case11：错误协议：没有checknum") {
+    SECTION("case21：错误协议：没有checknum") {
         test_protocol_factory::create_error_protocol_info info;
         info.error_format = 2;
         char *data = nullptr;
@@ -867,7 +999,7 @@ TEST_CASE("test read buffer from server", "[byte_buffer]") {
         REQUIRE(1 == byte_buffer.read_buffer_from_server(data, data_size));
         REQUIRE(nullptr == byte_buffer.front_and_pop());
     }
-    SECTION("case12：错误协议：变长错误") {
+    SECTION("case22：错误协议：变长错误") {
         test_protocol_factory::create_error_protocol_info info;
         info.error_format = 3;
         char *data = nullptr;
@@ -877,17 +1009,17 @@ TEST_CASE("test read buffer from server", "[byte_buffer]") {
         REQUIRE(1 == byte_buffer.read_buffer_from_server(data, data_size));
         REQUIRE(nullptr == byte_buffer.front_and_pop());
     }
-    SECTION("case13：错误协议：变长比协议体多") {
+    SECTION("case23：错误协议：变长比协议体多") {
         test_protocol_factory::create_error_protocol_info info;
         info.error_format = 4;
         char *data = nullptr;
         std::size_t data_size = 0;
         REQUIRE(true == test_protocol_factory::create_error_buffer_from_message(info, data, data_size));
         byte_buffer_from_server byte_buffer;
-        REQUIRE(1 == byte_buffer.read_buffer_from_server(data, data_size));
+        REQUIRE(2 == byte_buffer.read_buffer_from_server(data, data_size));
         REQUIRE(nullptr == byte_buffer.front_and_pop());
     }
-    SECTION("case14：错误协议：变长比协议体少") {
+    SECTION("case24：错误协议：变长比协议体少") {
         test_protocol_factory::create_error_protocol_info info;
         info.error_format = 5;
         char *data = nullptr;
@@ -895,6 +1027,93 @@ TEST_CASE("test read buffer from server", "[byte_buffer]") {
         REQUIRE(true == test_protocol_factory::create_error_buffer_from_message(info, data, data_size));
         byte_buffer_from_server byte_buffer;
         REQUIRE(1 == byte_buffer.read_buffer_from_server(data, data_size));
-        REQUIRE(nullptr == byte_buffer.front_and_pop());
+        REQUIRE(nullptr != byte_buffer.front_and_pop());
+    }
+    SECTION("case25：单个协议（没有协议体） + 错误协议（没有head）") {
+        byte_buffer_from_server byte_buffer;
+        char *all_data = nullptr;
+        std::size_t all_data_size = 0;
+        std::size_t protocol_data_size = 0;
+        {
+            test_protocol_factory::create_protocol_info info;
+            info.is_whole_protocol = true;
+            info.body_whole_length = 0;
+            char *data = nullptr;
+            std::size_t data_size = 0;
+            REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+            all_data = new char[data_size];
+            all_data_size = data_size;
+            std::memcpy(all_data, data, data_size);
+        }
+        {
+            test_protocol_factory::create_error_protocol_info info;
+            info.error_format = 1;
+            char *data = nullptr;
+            std::size_t data_size = 0;
+            REQUIRE(true == test_protocol_factory::create_error_buffer_from_message(info, data, data_size));
+            char *temp_data = new char[data_size + all_data_size];
+            std::memcpy(temp_data, all_data, all_data_size);
+            std::memcpy(temp_data + all_data_size, data, data_size);
+            delete[] all_data;
+            all_data = temp_data;
+            all_data_size += data_size;
+        }
+        int ret = byte_buffer.read_buffer_from_server(all_data, all_data_size);
+        REQUIRE(1 == ret);
+        int count = 0;
+        while (true) {
+            std::shared_ptr<byte_buffer_from_server::citylife_im_protocol> cp_buffer = byte_buffer.front_and_pop();
+            ++count;
+            if (1 == count) {
+                REQUIRE(nullptr != cp_buffer.get());
+                REQUIRE(cp_buffer->cp_buffer_current_size == cp_buffer->cp_buffer_size);
+            } else if (2 == count) {
+                REQUIRE(nullptr == cp_buffer.get());
+                break;
+            }
+        }
+        delete[] all_data;
+    }
+    SECTION("case25：错误协议（没有head）+ 单个协议（没有协议体）") {
+        byte_buffer_from_server byte_buffer;
+        char *all_data = nullptr;
+        std::size_t all_data_size = 0;
+        std::size_t protocol_data_size = 0;
+        {
+            test_protocol_factory::create_error_protocol_info info;
+            info.error_format = 2;
+            char *data = nullptr;
+            std::size_t data_size = 0;
+            REQUIRE(true == test_protocol_factory::create_error_buffer_from_message(info, data, data_size));
+            all_data = new char[data_size];
+            all_data_size = data_size;
+            std::memcpy(all_data, data, data_size);
+        }
+        {
+            test_protocol_factory::create_protocol_info info;
+            info.is_whole_protocol = true;
+            info.body_whole_length = 6;
+            char *data = nullptr;
+            std::size_t data_size = 0;
+            REQUIRE(true == test_protocol_factory::create_buffer_from_message(info, data, data_size));
+            char *temp_data = new char[data_size + all_data_size];
+            std::memcpy(temp_data, all_data, all_data_size);
+            std::memcpy(temp_data + all_data_size, data, data_size);
+            delete[] all_data;
+            all_data = temp_data;
+            all_data_size += data_size;
+        }
+        int ret = byte_buffer.read_buffer_from_server(all_data, all_data_size);
+        REQUIRE(1 == ret);
+        int count = 0;
+        while (true) {
+            std::shared_ptr<byte_buffer_from_server::citylife_im_protocol> cp_buffer = byte_buffer.front_and_pop();
+            ++count;
+            if (1 == count) {
+                REQUIRE(nullptr == cp_buffer.get());
+                break;
+            }
+        }
+        delete[] all_data;
     }
 }
