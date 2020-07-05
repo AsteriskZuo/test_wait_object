@@ -164,5 +164,277 @@
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "C455553C-4892-41ED-8968-A2A84162F2E3"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "test_wait_object/test_buffer_test.cpp"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "383"
+            endingLineNumber = "383"
+            landmarkName = "create_protocol_buffer(body_size, wbuf, vl_byte_size)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "256987E4-2289-4573-B34C-18543D9A6737"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "test_wait_object/test_buffer_test.cpp"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "417"
+            endingLineNumber = "417"
+            landmarkName = "data_buffer_test_case(body_size)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "9A55F140-BDCE-4CC8-8A01-E71061DF19FF"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "test_wait_object/test_buffer_test.cpp"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "428"
+            endingLineNumber = "428"
+            landmarkName = "data_buffer_test_case(body_size)"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "9A55F140-BDCE-4CC8-8A01-E71061DF19FF - 16e51896a5e96926"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "data_buffer_test_case(unsigned int)"
+                  moduleName = "test_unit"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/asteriskzuo/_github/test_wait_object/test_wait_object/test_buffer_test.cpp"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "428"
+                  endingLineNumber = "428"
+                  offsetFromSymbolStart = "1110">
+               </Location>
+               <Location
+                  uuid = "9A55F140-BDCE-4CC8-8A01-E71061DF19FF - 16e51896a5e96926"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "data_buffer_test_case(unsigned int)"
+                  moduleName = "test_unit"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/asteriskzuo/_github/test_wait_object/test_wait_object/test_buffer_test.cpp"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "428"
+                  endingLineNumber = "428"
+                  offsetFromSymbolStart = "1514">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "B741AE65-368A-46AE-A665-5A45104C6457"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "test_wait_object/test_buffer_test.cpp"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "423"
+            endingLineNumber = "423"
+            landmarkName = "data_buffer_test_case(body_size)"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "B741AE65-368A-46AE-A665-5A45104C6457 - 16e51896a5e96926"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "data_buffer_test_case(unsigned int)"
+                  moduleName = "test_unit"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/asteriskzuo/_github/test_wait_object/test_wait_object/test_buffer_test.cpp"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "423"
+                  endingLineNumber = "423"
+                  offsetFromSymbolStart = "565">
+               </Location>
+               <Location
+                  uuid = "B741AE65-368A-46AE-A665-5A45104C6457 - 16e51896a5e96926"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "data_buffer_test_case(unsigned int)"
+                  moduleName = "test_unit"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/asteriskzuo/_github/test_wait_object/test_wait_object/test_buffer_test.cpp"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "423"
+                  endingLineNumber = "423"
+                  offsetFromSymbolStart = "983">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "3C88E88A-7004-4086-91D6-3CE7655AACCD"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "test_wait_object/test_buffer_test.cpp"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "429"
+            endingLineNumber = "429"
+            landmarkName = "data_buffer_test_case(body_size)"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "3C88E88A-7004-4086-91D6-3CE7655AACCD - 16e51896a5e96926"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "data_buffer_test_case(unsigned int)"
+                  moduleName = "test_unit"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/asteriskzuo/_github/test_wait_object/test_wait_object/test_buffer_test.cpp"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "429"
+                  endingLineNumber = "429"
+                  offsetFromSymbolStart = "1531">
+               </Location>
+               <Location
+                  uuid = "3C88E88A-7004-4086-91D6-3CE7655AACCD - 16e51896a5e96926"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "data_buffer_test_case(unsigned int)"
+                  moduleName = "test_unit"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/asteriskzuo/_github/test_wait_object/test_wait_object/test_buffer_test.cpp"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "429"
+                  endingLineNumber = "429"
+                  offsetFromSymbolStart = "1536">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "17740BA2-9A55-46BF-A7BD-57B1E0367F40"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "test_wait_object/test_buffer_test.cpp"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "430"
+            endingLineNumber = "430"
+            landmarkName = "data_buffer_test_case(body_size)"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "17740BA2-9A55-46BF-A7BD-57B1E0367F40 - 16e51896a5e96926"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "data_buffer_test_case(unsigned int)"
+                  moduleName = "test_unit"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/asteriskzuo/_github/test_wait_object/test_wait_object/test_buffer_test.cpp"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "430"
+                  endingLineNumber = "430"
+                  offsetFromSymbolStart = "1970">
+               </Location>
+               <Location
+                  uuid = "17740BA2-9A55-46BF-A7BD-57B1E0367F40 - 16e51896a5e96926"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "data_buffer_test_case(unsigned int)"
+                  moduleName = "test_unit"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/asteriskzuo/_github/test_wait_object/test_wait_object/test_buffer_test.cpp"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "430"
+                  endingLineNumber = "430"
+                  offsetFromSymbolStart = "1975">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "9B090E07-4373-4837-9653-A722691775D3"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "test_wait_object/test_buffer_test.cpp"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "431"
+            endingLineNumber = "431"
+            landmarkName = "data_buffer_test_case(body_size)"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "9B090E07-4373-4837-9653-A722691775D3 - 16e51896a5e96926"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "data_buffer_test_case(unsigned int)"
+                  moduleName = "test_unit"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/asteriskzuo/_github/test_wait_object/test_wait_object/test_buffer_test.cpp"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "431"
+                  endingLineNumber = "431"
+                  offsetFromSymbolStart = "2396">
+               </Location>
+               <Location
+                  uuid = "9B090E07-4373-4837-9653-A722691775D3 - 16e51896a5e96926"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "data_buffer_test_case(unsigned int)"
+                  moduleName = "test_unit"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/asteriskzuo/_github/test_wait_object/test_wait_object/test_buffer_test.cpp"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "431"
+                  endingLineNumber = "431"
+                  offsetFromSymbolStart = "2401">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
    </Breakpoints>
 </Bucket>

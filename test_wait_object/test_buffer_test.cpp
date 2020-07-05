@@ -366,8 +366,88 @@ TEST_CASE("test add large data", "[final_buffer]") {
  * case23：错误协议：变长比协议体多
  * case24：错误协议：变长比协议体少
  * case25：单个协议（没有协议体） + 错误协议（没有head）
- * case25：错误协议（没有head）+ 单个协议（没有协议体）
+ * case26：错误协议（没有head）+ 单个协议（没有协议体）
+ * case27：数据测试：写入数据，变长为0的协议体的数据（3字节），并且在读取它
+ * case28：数据测试：写入数据，变长为88字节的协议体数据，并且读取它
+ * case29：数据测试：写入数据，变长为450字节的协议体数据，并且读取它
+ * case30：数据测试：写入数据，变长为80000字节的协议体数据，并且读取它 （8322815）（0x7efeff 约等于7.9MB） (131072) (0x20000 约定于128KB)
+ * case31：数据测试：写入数据，变长为200000字节的协议体数据，并且读取它 （8322815）（0x7efeff 约等于7.9MB） (131072) (0x20000 约定于128KB)
+ *
  */
+    
+    //test
+
+static bool create_protocol_buffer(const std::uint32_t body_size, write_buffer<char> &wbuf, std::size_t &vl_byte_size) {
+    bool ret = false;
+    do {
+        std::uint64_t size_t_size = std::numeric_limits<std::size_t>::max();
+        if (body_size > size_t_size) {
+            break;
+        }
+        char head = (char)64;
+        wbuf.append_byte((const char *)(&head), 1);
+        wbuf.append_checksum_and_variable_length(body_size, head);
+        vl_byte_size = wbuf.get_data_size() - 2;
+        if (0 < body_size) {
+            std::uint32_t body_size_tmp = body_size;
+            int body_size_digit = 0;
+            while (0 < body_size_tmp) {
+                body_size_tmp /= 10;
+                ++body_size_digit;
+            }
+            std::string body_size_size = std::to_string(body_size);
+            std::string body = body_size_size;
+            body.append(std::string(body_size - 2 * body_size_digit, 'c'));
+            body.append(body_size_size);
+            bool _ret = wbuf.append_byte(body.data(), body.size());
+            if (false == _ret) {
+                break;
+            }
+            body.clear();
+        }
+        ret = true;
+    } while (false);
+    return ret;
+}
+static void data_buffer_test_case(const std::uint32_t body_size) {
+    write_buffer<char> wbuf;
+    char *buffer = 0;
+    std::size_t buffer_size = 0;
+    std::size_t vl_byte_size = 0;
+    bool ret = create_protocol_buffer(body_size, wbuf, vl_byte_size);
+    REQUIRE(true == ret);
+    wbuf.get_all_byte(buffer, buffer_size);
+
+    read_buffer<char> rbuf;
+    ret = rbuf.append_byte(buffer, buffer_size);
+    REQUIRE(true == ret);
+    char out_head = *rbuf.get_byte(1);
+    std::size_t out_vl_num = 0;
+    char checknum = 0;
+    ret = rbuf.get_checksum_and_variable_length((std::uint32_t &)out_vl_num, checknum);
+    REQUIRE(true == ret);
+    REQUIRE(buffer[0] == (int)out_head);
+    REQUIRE(buffer[0] == checknum);
+    REQUIRE(body_size == out_vl_num);
+}
+
+TEST_CASE("test read and write buffer", "[data_buffer]") {
+    SECTION("case27：数据测试：写入数据，变长为0的协议体的数据（3字节），并且在读取它") {
+        data_buffer_test_case(0);
+    }
+    SECTION("case28：数据测试：写入数据，变长为88字节的协议体数据，并且读取它") {
+        data_buffer_test_case(88);
+    }
+    SECTION("case29：数据测试：写入数据，变长为450字节的协议体数据，并且读取它") {
+        data_buffer_test_case(450);
+    }
+    SECTION("case30：数据测试：写入数据，变长为80000字节的协议体数据，并且读取它 （8322815）（0x7efeff 约等于7.9MB） (131072) (0x20000 约定于128KB)") {
+        data_buffer_test_case(80000);
+    }
+    SECTION("数据测试：写入数据，变长为200000字节的协议体数据，并且读取它 （8322815）（0x7efeff 约等于7.9MB） (131072) (0x20000 约定于128KB)") {
+        data_buffer_test_case(200000);
+    }
+}
 
 TEST_CASE("test variable length", "[data_buffer]") {
     SECTION("case10：变长解析：1个字节的变长") {
