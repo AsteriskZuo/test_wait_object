@@ -19,6 +19,7 @@ std::mutex s_mutex;
 
 static const char *test_current_time();
 static long long test_get_time_difference();
+static void test_timestamp_convert();
 static void test1();
 static void test3();
 static void test5();
@@ -54,7 +55,7 @@ static void test37();
 static void test38();
 void test_timeout_object_function()
 {
-    test29();
+    test_timestamp_convert();
 }
 
 timeout_object timeout_object::_s_obj;
@@ -1342,6 +1343,33 @@ static const char *test_current_time()
     //    ss << std::put_time(now_tm, "%H:%M:%S");
     //    ss.flush();
     //    return ss.str().c_str();
+}
+
+static void test_timestamp_convert() {
+    /**
+     * 1.转换秒级时间戳
+     * 2.转换毫米级时间戳
+     */
+    if (true)
+    {
+        std::int64_t timestamp(1594262509);
+        std::chrono::seconds time_duration_seconds(timestamp);
+        std::chrono::time_point<std::chrono::system_clock> time_point_seconds(time_duration_seconds);
+        time_t time_seconds = std::chrono::system_clock::to_time_t(time_point_seconds);
+        tm* tm_seconds = std::localtime(&time_seconds);
+        tm* tm_seconds2 = std::gmtime(&time_seconds);
+        int a = 0;
+    }
+    if (true)
+    {
+        std::int64_t timestamp(1594262684570);
+        std::chrono::milliseconds time_duration_seconds(timestamp);
+        std::chrono::time_point<std::chrono::system_clock> time_point_seconds(time_duration_seconds);
+        time_t time_seconds = std::chrono::system_clock::to_time_t(time_point_seconds);
+        tm* tm_seconds = std::localtime(&time_seconds);
+        tm* tm_seconds2 = std::gmtime(&time_seconds);
+        int a = 0;
+    }
 }
 
 static std::chrono::milliseconds s_last;
